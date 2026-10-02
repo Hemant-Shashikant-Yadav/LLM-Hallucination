@@ -1,0 +1,36 @@
+# =============================================================================
+# Defense-in-Depth Hallucination Mitigation Framework
+# Core Dependencies
+# =============================================================================
+
+# --- Web Framework & Async ---
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+pydantic>=2.10.0
+pydantic-settings>=2.7.0
+httpx>=0.28.0
+
+# --- LLM Clients ---
+ollama>=0.4.0
+
+# --- Deep Learning & NLP ---
+torch>=2.5.0
+transformers>=4.46.0
+safetensors>=0.4.0
+accelerate>=1.2.0
+
+# --- NLI & Search ---
+duckduckgo-search>=7.0.0
+chromadb>=0.6.0
+
+# --- Evaluation & Visualization ---
+datasets>=3.2.0
+scikit-learn>=1.6.0
+pandas>=2.2.0
+matplotlib>=3.10.0
+scipy>=1.14.0
+numpy>=2.1.0
+
+# --- Utilities ---
+python-dotenv>=1.0.0
+loguru>=0.7.0

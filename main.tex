@@ -1,0 +1,102 @@
+\documentclass[11pt,a4paper]{article}
+
+% --- Packages for Academic Layout & Formatting ---
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{microtype}
+\usepackage{indentfirst}
+\usepackage{listings}
+\usepackage{graphicx}
+\usepackage[most]{tcolorbox}
+\usepackage{booktabs}   
+\usepackage{tabularx}   
+\usepackage{longtable}
+\usepackage{xltabular}
+\keepXColumns
+
+% --- Professional Color Palette Selection ---
+\definecolor{DeepNavy}{HTML}{1B365D}
+\definecolor{SteelBlue}{HTML}{5C768D}
+\definecolor{Charcoal}{HTML}{222222}
+\definecolor{LightTint}{HTML}{F0F4F8}
+
+% --- Layout Configurations ---
+\usepackage{titlesec}
+\titleformat{\section}{\color{DeepNavy}\normalfont\Large\bfseries}{\thesection}{1em}{}[{\color{SteelBlue}\titlerule[0.8pt]}]
+\titleformat{\subsection}{\color{SteelBlue}\normalfont\large\bfseries}{\thesubsection}{1em}{}
+
+\usepackage{setspace}
+\setstretch{1.15}
+
+\begin{document}
+
+% =========================================================================
+% TITLE PAGE
+% =========================================================================
+\begin{center}
+    {\LARGE \textbf{\color{DeepNavy}A Unified Defense-in-Depth Framework for Mitigating LLM Hallucinations: Integrating Internal Probes with External Symbolic Verification}}\\[1.5cm]
+    {\Large Master of Technology (M.Tech) Thesis Architecture Document}\\[1cm]
+\end{center}
+
+\pagenumbering{arabic}
+
+% =========================================================================
+% 1. ABSTRACT
+% =========================================================================
+\section{Abstract}
+The deployment of Large Language Models (LLMs) into safety-critical domains is restricted by their propensity to generate hallucinations. Current interventions are highly fragmented: pretraining methods fail to adjust to live context shifts, naive Retrieval-Augmented Generation (RAG) is prone to noise injection, and multi-agent debate protocols incur prohibitive computational latency. This research proposes a pure Python, asynchronous defense-in-depth framework designed to reconcile detection precision with runtime economic efficiency. 
+
+The framework functions via a multi-tiered architecture: (1) an internal triage layer utilizing Semantic Entropy Probes (SEPs) to instantaneously measure model uncertainty; (2) a targeted external verification track running Hypothesis-Testing RAG coupled with Natural Language Inference (NLI) checks; and (3) a structured logical reasoning track utilizing the HalluClean paradigm to decouple plan formulation from raw generation. Empirical evaluations will demonstrate improvements in operational cost-effectiveness and reductions in final hallucinatory outputs.
+
+% =========================================================================
+% 2. PROPOSED METHODOLOGY & SYSTEM ARCHITECTURE
+% =========================================================================
+\section{Proposed Methodology \& Pure Python Architecture}
+The proposed framework establishes an integrated, defense-in-depth pipeline that transitions from fast, lightweight internal validation to detailed external verification based on real-time query risk. The entire system is constructed using an asynchronous, pure Python microservice architecture (FastAPI) to ensure zero network latency during tensor activation extraction.
+
+\subsection{Layer 1: Internal Triage via Semantic Entropy Probes (SEPs)}
+When a user prompt enters the system, the base autoregressive model (hosted locally via Ollama or Hugging Face) initiates a draft generation. The framework probes the final hidden-state activations of the tokens during the forward pass. Activations are extracted from the later one-third of the target transformer architecture to maximize semantic abstraction.
+
+Let the hidden state vector extracted from layer $l$ at token position $t$ be represented as $h_t^{(l)} \in \mathbb{R}^d$. The linear probe parameterizes a lightweight logistical estimator:
+\begin{equation}
+P(\text{Hallucination} \mid h_t^{(l)}) = \sigma\left(W_{\text{SEP}} \cdot h_t^{(l)} + b_{\text{SEP}}\right)
+\end{equation}
+Where $\sigma$ represents the standard sigmoid activation function, and $W_{\text{SEP}} \in \mathbb{R}^{1 \times d}$ is the trained weight matrix. The semantic entropy is computed, and a predefined safety threshold ($T_{safe}$) is applied. If $H_{sem} < T_{safe}$, the token stream is marked as secure and delivered immediately, bypassing expensive validation.
+
+\subsection{Layer 2: Hypothesis-Testing RAG with NLI Verification}
+If $H_{sem} \ge T_{safe}$ and the uncertainty is knowledge-based, the system initiates a structured hypothesis-testing framework using asynchronous Python workers.
+Rather than appending raw retrieved paragraphs directly to the prompt, the system extracts the model's draft claim into independent Atomic Propositions (APs). 
+Retrieved source documents are processed by a fine-tuned Natural Language Inference (NLI) model (e.g., DeBERTa-v3), evaluating the relationship according to three strict states:
+\begin{itemize}
+    \item \textbf{Entailment:} The claim is approved for generation compilation.
+    \item \textbf{Contradiction:} The AP is rejected, and negative constraints are injected into the refinement loop to force omission of the false entity.
+    \item \textbf{Neutral:} The external evidence is inconclusive, triggering an expanded vector search.
+\end{itemize}
+
+\subsection{Layer 3: Structured Reasoning via the HalluClean Paradigm}
+When the high uncertainty score is identified as a logical reasoning flaw, the framework routes the query into an asynchronous directed acyclic graph (DAG) pipeline.
+This protocol splits the reasoning sequence into four distinct stages managed by Python state executors:
+\begin{itemize}
+    \item \textbf{Stage 1 (Task-Oriented Planning):} Generates a structured, symbolic execution graph.
+    \item \textbf{Stage 2 (Plan-Guided Reasoning):} Executes each step sequentially within local context boundaries.
+    \item \textbf{Stage 3 (Final Judgment):} Compares the synthesized conclusion against original constraints.
+    \item \textbf{Stage 4 (Content Refinement):} Rewrites the verified logical path into natural language.
+\end{itemize}
+
+% =========================================================================
+% 3. EVALUATION METRICS AND BENCHMARKING
+% =========================================================================
+\section{Evaluation Metrics and Benchmarking}
+To validate the architectural efficiency, the system includes a dedicated Python evaluation harness utilizing datasets such as HaluEval 2.0 and TruthfulQA. The evaluation tracks:
+\begin{itemize}
+    \item \textbf{Factual Precision:} The reduction in absolute hallucination rates compared to a zero-shot baseline.
+    \item \textbf{Latency Delta ($T_{total}$):} The wall-clock execution time reduction achieved by bypassing external verification for low-risk queries via Layer 1 triage.
+    \item \textbf{Token Expenditure:} The aggregate reduction in autoregressive token generation across the pipeline.
+\end{itemize}
+
+\end{document}

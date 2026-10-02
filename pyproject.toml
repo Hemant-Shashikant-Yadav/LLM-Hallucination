@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=75.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "defense-in-depth-framework"
+version = "0.1.0"
+description = "A pure-Python, asynchronous defense-in-depth framework for mitigating LLM hallucinations"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "M.Tech Thesis Research"},
+]
+keywords = [
+    "hallucination",
+    "llm",
+    "semantic-entropy",
+    "nli",
+    "rag",
+    "defense-in-depth",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dynamic = ["dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+[tool.setuptools.packages.find]
+include = ["app*", "evaluation*"]
+
+[project.scripts]
+did-serve = "app.main:run_server"
+did-benchmark = "evaluation.benchmark_runner:main"
