@@ -88,7 +88,10 @@ def load_gsm8k(n: int = N_SAMPLES) -> list[dict[str, Any]]:
     from datasets import load_dataset
 
     logger.info("Loading GSM8K (main split, n={})…", n)
-    ds = load_dataset("gsm8k", "main", split="test")
+    try:
+        ds = load_dataset("openai/gsm8k", "main", split="test")
+    except Exception:
+        ds = load_dataset("gsm8k", "main", split="test")
     samples = []
     for i, row in enumerate(ds):
         if i >= n:
@@ -344,22 +347,29 @@ async def run() -> None:
     all_summaries: list[pd.DataFrame] = []
 
     # ── TruthfulQA ───────────────────────────────────────────────────────
-    try:
-        tqa_samples = load_truthfulqa(N_SAMPLES)
-    except Exception as exc:
-        logger.error("Failed to load TruthfulQA: {}", exc)
-        tqa_samples = []
-
-    if tqa_samples:
-        logger.info("▶ Starting TruthfulQA benchmark ({} samples)…", len(tqa_samples))
-        df_tqa = await benchmark_dataset("truthfulqa", tqa_samples, eval_truthfulqa)
-        csv_path = OUTPUT_DIR / "results_truthfulqa.csv"
-        df_tqa.to_csv(csv_path, index=False)
-        logger.info("Saved → {}", csv_path)
-
+    tqa_csv_path = OUTPUT_DIR / "results_truthfulqa.csv"
+    if tqa_csv_path.exists() and tqa_csv_path.stat().st_size > 1000:
+        logger.info("TruthfulQA results already exist at {} — loading existing data", tqa_csv_path)
+        df_tqa = pd.read_csv(tqa_csv_path)
         summary_tqa = build_summary(df_tqa, "TruthfulQA")
         all_summaries.append(summary_tqa)
         print_latex(summary_tqa, "TruthfulQA")
+    else:
+        try:
+            tqa_samples = load_truthfulqa(N_SAMPLES)
+        except Exception as exc:
+            logger.error("Failed to load TruthfulQA: {}", exc)
+            tqa_samples = []
+
+        if tqa_samples:
+            logger.info("▶ Starting TruthfulQA benchmark ({} samples)…", len(tqa_samples))
+            df_tqa = await benchmark_dataset("truthfulqa", tqa_samples, eval_truthfulqa)
+            df_tqa.to_csv(tqa_csv_path, index=False)
+            logger.info("Saved → {}", tqa_csv_path)
+
+            summary_tqa = build_summary(df_tqa, "TruthfulQA")
+            all_summaries.append(summary_tqa)
+            print_latex(summary_tqa, "TruthfulQA")
 
     # ── GSM8K ────────────────────────────────────────────────────────────
     try:
