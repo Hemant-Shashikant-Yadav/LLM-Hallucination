@@ -1,357 +1,401 @@
 """
-Benchmark Runner for the Defense-in-Depth Framework.
+M.Tech Thesis Benchmark Runner — Three-Configuration Evaluation.
 
-Downloads HaluEval and TruthfulQA via HuggingFace datasets,
-runs batch inference through the framework API, and compares:
-- Zero-shot baseline (no framework)
-- Layer 1 only
-- Full pipeline
+Evaluates the Defense-in-Depth framework across three configurations:
+  1. Baseline (Raw LLM):  POST /api/v1/query/layer1
+  2. Naive RAG:           POST /api/v1/query/layer2
+  3. Full Framework:      POST /api/v1/query
 
-Outputs structured results as CSV and LaTeX tables.
+Datasets:
+  - TruthfulQA (30 validation samples, generation split)
+  - GSM8K      (30 test samples, main split)
+
+Produces:
+  - evaluation/results_truthfulqa.csv
+  - evaluation/results_gsm8k.csv
+  - LaTeX comparison table printed to stdout
 """
 
 from __future__ import annotations
 
 import asyncio
-import csv
 import json
+import re
+import sys
 import time
 from pathlib import Path
 from typing import Any
 
 import httpx
+import pandas as pd
 from loguru import logger
 
-from app.config import settings
-from app.models.schemas import BenchmarkRecord, PipelineLayer
-from evaluation.metrics import generate_metrics_report, report_to_latex_table
+# ── Logging Setup ────────────────────────────────────────────────────────────
+
+logger.remove()
+logger.add(
+    sys.stderr,
+    format=(
+        "<green>{time:HH:mm:ss.SSS}</green> | "
+        "<level>{level: <8}</level> | "
+        "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
+        "<level>{message}</level>"
+    ),
+    level="INFO",
+    colorize=True,
+)
+
+# ── Constants ────────────────────────────────────────────────────────────────
+
+API_BASE = "http://localhost:8000"
+N_SAMPLES = 30
+REQUEST_TIMEOUT = 1200.0  # 20 minutes — generous for cold Ollama models
+OUTPUT_DIR = Path(__file__).resolve().parent
+CONCURRENCY = 1  # Sequential to avoid overwhelming local Ollama
 
 
-# =============================================================================
-# Dataset Loaders
-# =============================================================================
+# ── Dataset Loaders ──────────────────────────────────────────────────────────
 
 
-def load_truthfulqa(max_samples: int | None = None) -> list[dict[str, Any]]:
+def load_truthfulqa(n: int = N_SAMPLES) -> list[dict[str, Any]]:
+    """Load *n* validation samples from truthfulqa/truthful_qa (generation)."""
+    from datasets import load_dataset
+
+    logger.info("Loading TruthfulQA (generation split, n={})…", n)
+    ds = load_dataset("truthfulqa/truthful_qa", "generation", split="validation")
+    samples = []
+    for i, row in enumerate(ds):
+        if i >= n:
+            break
+        # Collect ALL correct answers for flexible matching
+        correct_answers: list[str] = []
+        if row.get("best_answer"):
+            correct_answers.append(row["best_answer"])
+        if row.get("correct_answers"):
+            correct_answers.extend(row["correct_answers"])
+        samples.append({
+            "id": f"tqa_{i}",
+            "prompt": row["question"],
+            "correct_answers": correct_answers,
+            "category": row.get("category", ""),
+        })
+    logger.info("Loaded {} TruthfulQA samples", len(samples))
+    return samples
+
+
+def load_gsm8k(n: int = N_SAMPLES) -> list[dict[str, Any]]:
+    """Load *n* test samples from gsm8k (main split)."""
+    from datasets import load_dataset
+
+    logger.info("Loading GSM8K (main split, n={})…", n)
+    ds = load_dataset("gsm8k", "main", split="test")
+    samples = []
+    for i, row in enumerate(ds):
+        if i >= n:
+            break
+        # Extract the numerical answer from the #### delimiter
+        answer_text = row.get("answer", "")
+        numerical = ""
+        if "####" in answer_text:
+            numerical = answer_text.split("####")[-1].strip()
+            # Normalise: remove commas, dollar signs, spaces
+            numerical = numerical.replace(",", "").replace("$", "").strip()
+        samples.append({
+            "id": f"gsm_{i}",
+            "prompt": row["question"],
+            "correct_answers": [numerical] if numerical else [],
+            "numerical_answer": numerical,
+        })
+    logger.info("Loaded {} GSM8K samples", len(samples))
+    return samples
+
+
+# ── Accuracy Evaluators ──────────────────────────────────────────────────────
+
+_NUM_RE = re.compile(r"-?\d[\d,]*\.?\d*")
+
+
+def eval_truthfulqa(answer: str, correct_answers: list[str]) -> bool:
     """
-    Load TruthfulQA dataset from HuggingFace.
+    TruthfulQA accuracy: substring overlap.
 
-    Returns list of {"question": ..., "best_answer": ..., "category": ...}.
+    Returns True if any correct answer appears as a substring (case-insensitive)
+    in the model's response.
     """
+    if not correct_answers:
+        return False
+    ans_lower = answer.lower()
+    for ca in correct_answers:
+        if ca and ca.lower().strip() in ans_lower:
+            return True
+    return False
+
+
+def eval_gsm8k(answer: str, numerical_answer: str) -> bool:
+    """
+    GSM8K accuracy: check if the numerical ground truth appears in the
+    generated answer (after stripping commas/dollars).
+    """
+    if not numerical_answer:
+        return False
+    # Normalise the answer text
+    normalised = answer.replace(",", "").replace("$", "")
+    return numerical_answer in normalised
+
+
+# ── API Client ───────────────────────────────────────────────────────────────
+
+
+async def query_api(
+    client: httpx.AsyncClient,
+    prompt: str,
+    endpoint: str,
+) -> dict[str, Any]:
+    """
+    POST a query to the framework and return the JSON response.
+
+    Returns a safe fallback dict on any error.
+    """
+    body = {
+        "prompt": prompt,
+        "model": "llama3.1:8b",
+        "include_audit": True,
+    }
     try:
-        from datasets import load_dataset
+        resp = await client.post(f"{API_BASE}{endpoint}", json=body)
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as exc:
+        logger.warning("API {} failed: {}", endpoint, exc)
+        return {"answer": "[ERROR]", "pipeline_result": None}
 
-        dataset = load_dataset("truthfulqa/truthful_qa", "generation", split="validation")
 
-        samples = []
-        for i, item in enumerate(dataset):
-            if max_samples and i >= max_samples:
-                break
-            samples.append({
-                "question_id": f"tqa_{i}",
-                "question": item["question"],
-                "best_answer": item.get("best_answer", ""),
-                "category": item.get("category", "unknown"),
-            })
+def _extract_fields(resp: dict[str, Any]) -> dict[str, Any]:
+    """Extract auditing fields from a framework response."""
+    pr = resp.get("pipeline_result") or {}
+    triage = pr.get("triage_result") or {}
+    ec = triage.get("error_classification") or {}
+    return {
+        "answer": resp.get("answer", ""),
+        "total_latency_ms": pr.get("total_latency_ms", 0.0),
+        "tokens_generated": pr.get("tokens_generated", 0),
+        "triage_decision": triage.get("decision", ""),
+        "classified_error_type": ec.get("error_type", ""),
+        "semantic_entropy": triage.get("semantic_entropy", 0.0),
+        "layers_invoked": pr.get("layers_invoked", ""),
+    }
 
-        logger.info("Loaded {} TruthfulQA samples", len(samples))
-        return samples
 
+# ── Benchmark Core ───────────────────────────────────────────────────────────
+
+
+async def benchmark_dataset(
+    dataset_name: str,
+    samples: list[dict[str, Any]],
+    evaluator,
+) -> pd.DataFrame:
+    """
+    Run all three configurations for every sample and return a DataFrame.
+
+    Configurations:
+      1. baseline   → /api/v1/query/layer1
+      2. naive_rag  → /api/v1/query/layer2
+      3. full_framework → /api/v1/query
+    """
+    configs = [
+        ("baseline", "/api/v1/query/layer1"),
+        ("naive_rag", "/api/v1/query/layer2"),
+        ("full_framework", "/api/v1/query"),
+    ]
+
+    rows: list[dict[str, Any]] = []
+
+    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+        for idx, sample in enumerate(samples):
+            prompt = sample["prompt"]
+            correct = sample["correct_answers"]
+            logger.info(
+                "[{}/{}] {}: {:.60}…",
+                idx + 1,
+                len(samples),
+                dataset_name,
+                prompt,
+            )
+
+            for config_name, endpoint in configs:
+                t0 = time.perf_counter()
+                resp = await query_api(client, prompt, endpoint)
+                wall_ms = (time.perf_counter() - t0) * 1000
+
+                fields = _extract_fields(resp)
+                answer_text = fields["answer"]
+
+                # Evaluate accuracy
+                if dataset_name == "gsm8k":
+                    correct_flag = evaluator(
+                        answer_text, sample.get("numerical_answer", "")
+                    )
+                else:
+                    correct_flag = evaluator(answer_text, correct)
+
+                rows.append({
+                    "dataset": dataset_name,
+                    "sample_id": sample["id"],
+                    "prompt": prompt[:200],
+                    "config": config_name,
+                    "answer": answer_text[:500],
+                    "is_correct": correct_flag,
+                    "total_latency_ms": fields["total_latency_ms"],
+                    "wall_latency_ms": round(wall_ms, 2),
+                    "tokens_generated": fields["tokens_generated"],
+                    "triage_decision": fields["triage_decision"],
+                    "classified_error_type": fields["classified_error_type"],
+                    "semantic_entropy": fields["semantic_entropy"],
+                    "layers_invoked": fields["layers_invoked"],
+                    "reference_answer": (
+                        correct[0][:200] if correct else ""
+                    ),
+                })
+
+            # Brief pause between samples
+            await asyncio.sleep(0.3)
+
+    return pd.DataFrame(rows)
+
+
+# ── Summary Table Builder ────────────────────────────────────────────────────
+
+
+def build_summary(df: pd.DataFrame, dataset_name: str) -> pd.DataFrame:
+    """
+    Aggregate per-config summary from the raw results DataFrame.
+
+    Columns: Config | Accuracy(%) | Avg Latency(ms) | Avg Tokens
+    """
+    agg = (
+        df.groupby("config")
+        .agg(
+            accuracy=("is_correct", "mean"),
+            avg_latency_ms=("wall_latency_ms", "mean"),
+            avg_tokens=("tokens_generated", "mean"),
+            n_samples=("sample_id", "count"),
+        )
+        .reset_index()
+    )
+    agg["accuracy_pct"] = (agg["accuracy"] * 100).round(2)
+    agg["avg_latency_ms"] = agg["avg_latency_ms"].round(1)
+    agg["avg_tokens"] = agg["avg_tokens"].round(1)
+    agg["dataset"] = dataset_name
+
+    # Ensure ordering: baseline → naive_rag → full_framework
+    order = {"baseline": 0, "naive_rag": 1, "full_framework": 2}
+    agg["_order"] = agg["config"].map(order)
+    agg = agg.sort_values("_order").drop(columns="_order").reset_index(drop=True)
+
+    return agg
+
+
+def print_latex(summary: pd.DataFrame, dataset_name: str) -> str:
+    """Print a LaTeX booktabs table to stdout and return the string."""
+    display_names = {
+        "baseline": "Raw LLM (Baseline)",
+        "naive_rag": "Naive RAG (Layer 2)",
+        "full_framework": "Defense-in-Depth (Proposed)",
+    }
+    tbl = summary[["config", "accuracy_pct", "avg_latency_ms", "avg_tokens"]].copy()
+    tbl["config"] = tbl["config"].map(display_names)
+    tbl.columns = ["Configuration", "Accuracy (%)", "Avg Latency (ms)", "Avg Tokens"]
+
+    latex = tbl.to_latex(
+        index=False,
+        caption=f"Benchmark Results on {dataset_name} (N={int(summary['n_samples'].iloc[0])})",
+        label=f"tab:{dataset_name.lower().replace(' ', '_')}_benchmark",
+        column_format="lccc",
+        escape=False,
+    )
+    print("\n" + "=" * 72)
+    print(f"  LaTeX Table — {dataset_name}")
+    print("=" * 72)
+    print(latex)
+    return latex
+
+
+# ── Main Entry ───────────────────────────────────────────────────────────────
+
+
+async def run() -> None:
+    """Full benchmark pipeline: load → query → evaluate → report."""
+
+    # 0. Health check
+    logger.info("Pre-flight: checking API health…")
+    try:
+        async with httpx.AsyncClient(timeout=10) as hc:
+            r = await hc.get(f"{API_BASE}/api/v1/health")
+            r.raise_for_status()
+            logger.info("API healthy: {}", r.json().get("status"))
+    except Exception as exc:
+        logger.error(
+            "API not reachable at {} — is the server running? Error: {}",
+            API_BASE,
+            exc,
+        )
+        sys.exit(1)
+
+    all_summaries: list[pd.DataFrame] = []
+
+    # ── TruthfulQA ───────────────────────────────────────────────────────
+    try:
+        tqa_samples = load_truthfulqa(N_SAMPLES)
     except Exception as exc:
         logger.error("Failed to load TruthfulQA: {}", exc)
-        return []
+        tqa_samples = []
 
+    if tqa_samples:
+        logger.info("▶ Starting TruthfulQA benchmark ({} samples)…", len(tqa_samples))
+        df_tqa = await benchmark_dataset("truthfulqa", tqa_samples, eval_truthfulqa)
+        csv_path = OUTPUT_DIR / "results_truthfulqa.csv"
+        df_tqa.to_csv(csv_path, index=False)
+        logger.info("Saved → {}", csv_path)
 
-def load_halueval(max_samples: int | None = None) -> list[dict[str, Any]]:
-    """
-    Load HaluEval dataset from HuggingFace.
+        summary_tqa = build_summary(df_tqa, "TruthfulQA")
+        all_summaries.append(summary_tqa)
+        print_latex(summary_tqa, "TruthfulQA")
 
-    Returns list of {"question": ..., "answer": ..., "hallucinated": ...}.
-    """
+    # ── GSM8K ────────────────────────────────────────────────────────────
     try:
-        from datasets import load_dataset
-
-        # HaluEval has multiple subsets; we use the QA subset
-        dataset = load_dataset("pminervini/HaluEval", "qa_samples", split="data")
-
-        samples = []
-        for i, item in enumerate(dataset):
-            if max_samples and i >= max_samples:
-                break
-            samples.append({
-                "question_id": f"halu_{i}",
-                "question": item.get("question", ""),
-                "answer": item.get("hallucinated_answer", ""),
-                "correct_answer": item.get("right_answer", ""),
-                "hallucinated": True,
-            })
-
-        logger.info("Loaded {} HaluEval samples", len(samples))
-        return samples
-
+        gsm_samples = load_gsm8k(N_SAMPLES)
     except Exception as exc:
-        logger.error("Failed to load HaluEval: {}", exc)
-        return []
+        logger.error("Failed to load GSM8K: {}", exc)
+        gsm_samples = []
 
+    if gsm_samples:
+        logger.info("▶ Starting GSM8K benchmark ({} samples)…", len(gsm_samples))
+        df_gsm = await benchmark_dataset("gsm8k", gsm_samples, eval_gsm8k)
+        csv_path = OUTPUT_DIR / "results_gsm8k.csv"
+        df_gsm.to_csv(csv_path, index=False)
+        logger.info("Saved → {}", csv_path)
 
-# =============================================================================
-# Benchmark Engine
-# =============================================================================
+        summary_gsm = build_summary(df_gsm, "GSM8K")
+        all_summaries.append(summary_gsm)
+        print_latex(summary_gsm, "GSM8K")
 
-
-class BenchmarkRunner:
-    """
-    Batch benchmark runner that evaluates the framework
-    against baseline LLM outputs.
-    """
-
-    def __init__(
-        self,
-        api_base_url: str = "http://localhost:8000",
-        output_dir: str | None = None,
-    ) -> None:
-        self._api_base = api_base_url
-        self._output_dir = Path(output_dir or settings.eval_output_dir)
-        self._output_dir.mkdir(parents=True, exist_ok=True)
-        self._client = httpx.AsyncClient(timeout=1200.0)
-        logger.info(
-            "BenchmarkRunner initialized | api={} | output={}",
-            self._api_base,
-            self._output_dir,
+    # ── Combined Table ───────────────────────────────────────────────────
+    if all_summaries:
+        combined = pd.concat(all_summaries, ignore_index=True)
+        print("\n" + "=" * 72)
+        print("  Combined Summary")
+        print("=" * 72)
+        print(
+            combined[
+                ["dataset", "config", "accuracy_pct", "avg_latency_ms", "avg_tokens"]
+            ].to_string(index=False)
         )
 
-    async def close(self) -> None:
-        """Close the HTTP client."""
-        await self._client.aclose()
-
-    # -------------------------------------------------------------------------
-    # Run Benchmarks
-    # -------------------------------------------------------------------------
-
-    async def run_benchmark(
-        self,
-        dataset_name: str,
-        samples: list[dict[str, Any]],
-    ) -> list[BenchmarkRecord]:
-        """
-        Run the full benchmark for a dataset.
-
-        For each sample:
-        1. Get zero-shot baseline from Layer 1 only
-        2. Run through full pipeline
-        3. Compare results
-
-        Args:
-            dataset_name: Name of the dataset.
-            samples: List of sample dicts with 'question' key.
-
-        Returns:
-            List of BenchmarkRecord objects.
-        """
-        records: list[BenchmarkRecord] = []
-
-        for i, sample in enumerate(samples):
-            logger.info(
-                "Benchmarking sample {}/{}: {:.50}...",
-                i + 1,
-                len(samples),
-                sample["question"],
-            )
-
-            try:
-                record = await self._benchmark_single(dataset_name, sample)
-                records.append(record)
-            except Exception as exc:
-                logger.error("Benchmark failed for sample {}: {}", i, exc)
-                continue
-
-            # Small delay to avoid overwhelming the server
-            await asyncio.sleep(0.5)
-
-        logger.info(
-            "Benchmark complete | dataset={} | samples={}",
-            dataset_name,
-            len(records),
-        )
-
-        return records
-
-    async def _benchmark_single(
-        self,
-        dataset_name: str,
-        sample: dict[str, Any],
-    ) -> BenchmarkRecord:
-        """Benchmark a single sample."""
-
-        # 1. Baseline: Layer 1 only (zero-shot, no verification)
-        baseline_start = time.perf_counter()
-        baseline_response = await self._query_api(
-            sample["question"], endpoint="/api/v1/query/layer1"
-        )
-        baseline_latency = (time.perf_counter() - baseline_start) * 1000
-
-        # 2. Framework: Full pipeline
-        framework_start = time.perf_counter()
-        framework_response = await self._query_api(
-            sample["question"], endpoint="/api/v1/query"
-        )
-        framework_latency = (time.perf_counter() - framework_start) * 1000
-
-        # Determine hallucination status
-        reference = sample.get("best_answer") or sample.get("correct_answer", "")
-
-        return BenchmarkRecord(
-            dataset=dataset_name,
-            question_id=sample.get("question_id", "unknown"),
-            question=sample["question"],
-            reference_answer=reference,
-            baseline_answer=baseline_response.get("answer", ""),
-            framework_answer=framework_response.get("answer", ""),
-            is_hallucinated_baseline=sample.get("hallucinated", False),
-            is_hallucinated_framework=False,  # Will be evaluated by metrics
-            layers_invoked=PipelineLayer(
-                framework_response
-                .get("pipeline_result", {})
-                .get("layers_invoked", "layer1_only")
-            ),
-            baseline_latency_ms=baseline_latency,
-            framework_latency_ms=framework_latency,
-            baseline_tokens=baseline_response
-                .get("pipeline_result", {})
-                .get("tokens_generated", 0),
-            framework_tokens=framework_response
-                .get("pipeline_result", {})
-                .get("tokens_generated", 0),
-        )
-
-    async def _query_api(
-        self,
-        prompt: str,
-        endpoint: str = "/api/v1/query",
-    ) -> dict[str, Any]:
-        """Send a query to the framework API."""
-        try:
-            response = await self._client.post(
-                f"{self._api_base}{endpoint}",
-                json={"prompt": prompt, "include_audit": True},
-            )
-            response.raise_for_status()
-            return response.json()
-        except Exception as exc:
-            logger.error("API query failed: {}", exc)
-            return {"answer": "[Error]", "pipeline_result": {}}
-
-    # -------------------------------------------------------------------------
-    # Output
-    # -------------------------------------------------------------------------
-
-    def save_records_csv(
-        self,
-        records: list[BenchmarkRecord],
-        filename: str,
-    ) -> Path:
-        """Save benchmark records to CSV."""
-        filepath = self._output_dir / filename
-
-        with open(filepath, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(
-                f,
-                fieldnames=[
-                    "dataset", "question_id", "question",
-                    "reference_answer", "baseline_answer", "framework_answer",
-                    "is_hallucinated_baseline", "is_hallucinated_framework",
-                    "layers_invoked",
-                    "baseline_latency_ms", "framework_latency_ms",
-                    "baseline_tokens", "framework_tokens",
-                ],
-            )
-            writer.writeheader()
-            for r in records:
-                writer.writerow(r.model_dump())
-
-        logger.info("Saved {} records to {}", len(records), filepath)
-        return filepath
-
-    def save_latex_table(self, report, filename: str) -> Path:
-        """Save LaTeX table to file."""
-        filepath = self._output_dir / filename
-        latex = report_to_latex_table(report)
-        filepath.write_text(latex, encoding="utf-8")
-        logger.info("Saved LaTeX table to {}", filepath)
-        return filepath
-
-    def save_report_json(self, report, filename: str) -> Path:
-        """Save metrics report as JSON."""
-        filepath = self._output_dir / filename
-        filepath.write_text(
-            json.dumps(report.model_dump(), indent=2, default=str),
-            encoding="utf-8",
-        )
-        logger.info("Saved metrics report to {}", filepath)
-        return filepath
-
-
-# =============================================================================
-# CLI Entry Point
-# =============================================================================
-
-
-async def run_all_benchmarks(
-    max_samples: int = 50,
-    api_url: str = "http://localhost:8000",
-) -> None:
-    """Run all benchmarks and generate reports."""
-    runner = BenchmarkRunner(api_base_url=api_url)
-
-    try:
-        # TruthfulQA
-        logger.info("Loading TruthfulQA dataset...")
-        tqa_samples = load_truthfulqa(max_samples)
-        if tqa_samples:
-            tqa_records = await runner.run_benchmark("TruthfulQA", tqa_samples)
-            runner.save_records_csv(tqa_records, "truthfulqa_results.csv")
-
-            if tqa_records:
-                tqa_report = generate_metrics_report(tqa_records, "TruthfulQA")
-                runner.save_report_json(tqa_report, "truthfulqa_metrics.json")
-                runner.save_latex_table(tqa_report, "truthfulqa_table.tex")
-
-        # HaluEval
-        logger.info("Loading HaluEval dataset...")
-        halu_samples = load_halueval(max_samples)
-        if halu_samples:
-            halu_records = await runner.run_benchmark("HaluEval", halu_samples)
-            runner.save_records_csv(halu_records, "halueval_results.csv")
-
-            if halu_records:
-                halu_report = generate_metrics_report(halu_records, "HaluEval")
-                runner.save_report_json(halu_report, "halueval_metrics.json")
-                runner.save_latex_table(halu_report, "halueval_table.tex")
-
-    finally:
-        await runner.close()
-
-    logger.info("All benchmarks complete!")
+    logger.info("✅ All benchmarks complete.")
 
 
 def main() -> None:
-    """CLI entry point for the benchmark runner."""
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Run Defense-in-Depth Framework Benchmarks"
-    )
-    parser.add_argument(
-        "--max-samples", type=int, default=50,
-        help="Maximum samples per dataset (default: 50)"
-    )
-    parser.add_argument(
-        "--api-url", type=str, default="http://localhost:8000",
-        help="Framework API URL (default: http://localhost:8000)"
-    )
-    args = parser.parse_args()
-
-    asyncio.run(run_all_benchmarks(args.max_samples, args.api_url))
+    asyncio.run(run())
 
 
 if __name__ == "__main__":

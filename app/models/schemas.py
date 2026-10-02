@@ -3,6 +3,10 @@ Pydantic v2 data models for the Defense-in-Depth Hallucination Mitigation Framew
 
 All shared request/response schemas, internal pipeline data structures,
 and evaluation record types are defined here.
+
+Algorithmic novelties for research publication:
+- Dual-Head Uncertainty Classifier output (ErrorClassification)
+- Conflict-Aware NLI Consensus Scoring (NLIPassageScore, ConflictAwareNLIResult)
 """
 
 from __future__ import annotations
@@ -32,6 +36,14 @@ class NLILabel(str, Enum):
 
     ENTAILMENT = "entailment"
     CONTRADICTION = "contradiction"
+    NEUTRAL = "neutral"
+
+
+class ConsensusVerdict(str, Enum):
+    """Verdict from the conflict-aware weighted NLI consensus scoring."""
+
+    ACCEPT = "accept"
+    REJECT = "reject"
     NEUTRAL = "neutral"
 
 
@@ -93,6 +105,35 @@ class ActivationData(BaseModel):
     # Actual tensors are passed in-memory; this model tracks metadata only.
 
 
+class ErrorClassification(BaseModel):
+    """
+    Output of the Dual-Head Uncertainty Classifier.
+
+    Head 1: Semantic entropy H_sem ∈ [0, 1] (continuous uncertainty signal).
+    Head 2: Categorical error-type logits → knowledge vs. reasoning routing.
+    """
+
+    semantic_entropy: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Predicted semantic entropy H_sem from Head 1 (sigmoid output)",
+    )
+    error_type: str = Field(
+        description="Predicted error category: 'knowledge' or 'reasoning'",
+    )
+    knowledge_logit: float = Field(
+        description="Raw logit for 'knowledge' error class from Head 2",
+    )
+    reasoning_logit: float = Field(
+        description="Raw logit for 'reasoning' error class from Head 2",
+    )
+    routing_confidence: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Softmax confidence for the predicted error type",
+    )
+
+
 class TriageResult(BaseModel):
     """Result of the Layer 1 triage evaluation."""
 
@@ -105,6 +146,13 @@ class TriageResult(BaseModel):
         ge=0.0,
         le=1.0,
         description="P(Hallucination | h_t) from the probe",
+    )
+    error_classification: ErrorClassification | None = Field(
+        default=None,
+        description=(
+            "Output of the dual-head classifier over the surrogate hidden state. "
+            "None when the probe is untrained and falls back to logprob proxy."
+        ),
     )
     threshold_used: float = Field(description="T_safe threshold value used")
     draft_response: str = Field(description="The initial draft LLM response")
@@ -141,6 +189,62 @@ class SearchResult(BaseModel):
     )
 
 
+class NLIPassageScore(BaseModel):
+    """
+    Per-passage NLI score for conflict-aware consensus.
+
+    Stores the entailment/contradiction probabilities and the retrieval
+    relevance weight w_j used in the weighted consensus formula:
+        S(p_i) = Σ_j (w_j · [P(entail)_j − P(contradict)_j])
+    """
+
+    passage_snippet: str = Field(description="The evidence passage text")
+    source_url: str = Field(default="")
+    relevance_weight: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Retrieval relevance score w_j used as weighting factor",
+    )
+    entailment_prob: float = Field(ge=0.0, le=1.0)
+    contradiction_prob: float = Field(ge=0.0, le=1.0)
+    neutral_prob: float = Field(ge=0.0, le=1.0)
+    weighted_contribution: float = Field(
+        description="w_j · (P(entail) − P(contradict)) for this passage",
+    )
+
+
+class ConflictAwareNLIResult(BaseModel):
+    """
+    Aggregated conflict-aware NLI result for a single atomic proposition.
+
+    Implements the weighted consensus formula:
+        S(p_i) = Σ_j (w_j · [P(entail)_j − P(contradict)_j])
+
+    The consensus score is compared against configurable thresholds
+    to render an accept / reject / neutral verdict.
+    """
+
+    consensus_score: float = Field(
+        description=(
+            "Weighted consensus score S(p_i). "
+            "Positive → leans entailment, negative → leans contradiction."
+        ),
+    )
+    verdict: ConsensusVerdict = Field(
+        description="Final verdict based on consensus thresholds",
+    )
+    passage_scores: list[NLIPassageScore] = Field(
+        default_factory=list,
+        description="Per-passage breakdown of the consensus computation",
+    )
+    accept_threshold: float = Field(
+        description="Threshold above which the claim is accepted",
+    )
+    reject_threshold: float = Field(
+        description="Threshold below which the claim is rejected",
+    )
+
+
 class NLIResult(BaseModel):
     """NLI verification result for a single atomic proposition."""
 
@@ -157,6 +261,13 @@ class NLIResult(BaseModel):
     all_scores: dict[str, float] = Field(
         default_factory=dict,
         description="Raw softmax scores for all three NLI classes",
+    )
+    conflict_aware_result: ConflictAwareNLIResult | None = Field(
+        default=None,
+        description=(
+            "Conflict-aware weighted consensus result across all retrieved passages. "
+            "None when only a single passage was available (falls back to simple NLI)."
+        ),
     )
 
 

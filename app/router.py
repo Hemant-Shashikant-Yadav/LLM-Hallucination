@@ -18,7 +18,7 @@ from loguru import logger
 
 from app.config import settings
 from app.layer1_triage.activation_hook import ActivationExtractor
-from app.layer1_triage.probe_model import TriageEngine
+from app.layer1_triage.probe_model import SurrogateExtractor, TriageEngine
 from app.layer2_nli_rag.nli_verifier import NLIVerifier
 from app.layer2_nli_rag.proposition_parser import PropositionParser
 from app.layer2_nli_rag.search_retriever import SearchRetriever
@@ -49,12 +49,16 @@ class DefenseInDepthRouter:
 
         # Layer 1
         self._activation_extractor = ActivationExtractor()
+        self._surrogate_extractor = SurrogateExtractor()
         self._triage_engine = TriageEngine()
 
         # Layer 2
         self._proposition_parser = PropositionParser(self._ollama)
         self._search_retriever = SearchRetriever()
-        self._nli_verifier = NLIVerifier()
+        self._nli_verifier = NLIVerifier(
+            accept_threshold=settings.nli_accept_threshold,
+            reject_threshold=settings.nli_reject_threshold,
+        )
 
         # Layer 3
         self._planner = HalluCleanPlanner(self._ollama)
@@ -97,6 +101,23 @@ class DefenseInDepthRouter:
                 exc,
             )
 
+        # Load surrogate extractor (Layer 1 — Surrogate Proxy Probing)
+        try:
+            await self._surrogate_extractor.load_model()
+            self._triage_engine.set_surrogate(self._surrogate_extractor)
+
+            # Re-initialize the dual-head classifier with surrogate hidden dim
+            surrogate_dim = self._surrogate_extractor.hidden_dim
+            self._triage_engine.initialize_probe(surrogate_dim)
+            logger.info(
+                "Layer 1 surrogate probe attached | hidden_dim={}",
+                surrogate_dim,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Surrogate extractor could not be loaded: {}", exc
+            )
+
         # Load NLI model (Layer 2)
         try:
             await self._nli_verifier.load_model()
@@ -117,6 +138,7 @@ class DefenseInDepthRouter:
         """Clean up resources during shutdown."""
         logger.info("Shutting down Defense-in-Depth pipeline...")
         self._activation_extractor.unload()
+        self._surrogate_extractor.unload()
         self._nli_verifier.unload()
         self._initialized = False
 
@@ -159,7 +181,9 @@ class DefenseInDepthRouter:
             )
 
         # Step 2: Layer 1 Triage
-        triage_result = await self._run_layer1(draft_response)
+        triage_result = await self._run_layer1(
+            request.prompt, draft_response
+        )
 
         # Step 3: Route based on triage decision
         if triage_result.decision == TriageDecision.SAFE:
@@ -203,37 +227,49 @@ class DefenseInDepthRouter:
     # Layer 1: Semantic Entropy Triage
     # -------------------------------------------------------------------------
 
-    async def _run_layer1(self, draft_response: str):
+    async def _run_layer1(
+        self,
+        prompt: str,
+        draft_response: str,
+    ):
         """Run Layer 1 triage on the draft response."""
         from app.models.schemas import TriageResult as TR
 
         try:
-            # Extract activations from probe model
+            # Extract activations from probe model (legacy path)
             activation_bundle = await self._activation_extractor.extract_activations(
                 draft_response
             )
 
-            # Run triage
+            # Run triage — the engine will prefer the surrogate path
+            # if a SurrogateExtractor is attached, and fall back to
+            # the activation_bundle or logprob proxy otherwise.
             return await self._triage_engine.triage(
-                activation_bundle=activation_bundle,
+                prompt=prompt,
                 draft_response=draft_response,
+                activation_bundle=activation_bundle,
             )
 
         except Exception as exc:
             logger.warning("Layer 1 activation extraction failed: {}", exc)
-            # Fallback: use logprob-based estimation
-            return await self._triage_engine.triage(
-                activation_bundle=None,
-                draft_response=draft_response,
-                generation_logprobs=None,
-            ) if hasattr(self._triage_engine, '_triage_sync') else TR(
-                decision=TriageDecision.KNOWLEDGE_UNCERTAIN,
-                semantic_entropy=0.7,
-                hallucination_probability=0.5,
-                threshold_used=settings.t_safe,
-                draft_response=draft_response,
-                latency_ms=0.0,
-            )
+            # Fallback: attempt surrogate-only triage, then pure proxy
+            try:
+                return await self._triage_engine.triage(
+                    prompt=prompt,
+                    draft_response=draft_response,
+                    activation_bundle=None,
+                    generation_logprobs=None,
+                )
+            except Exception:
+                return TR(
+                    decision=TriageDecision.KNOWLEDGE_UNCERTAIN,
+                    semantic_entropy=0.7,
+                    hallucination_probability=0.5,
+                    error_classification=None,
+                    threshold_used=settings.t_safe,
+                    draft_response=draft_response,
+                    latency_ms=0.0,
+                )
 
     # -------------------------------------------------------------------------
     # Layer 2: NLI-RAG Processing
@@ -377,6 +413,7 @@ class DefenseInDepthRouter:
             ),
             semantic_entropy=0.6,
             hallucination_probability=0.5,
+            error_classification=None,
             threshold_used=settings.t_safe,
             draft_response=draft_response,
             latency_ms=0.0,

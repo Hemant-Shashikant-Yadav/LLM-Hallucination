@@ -1,14 +1,30 @@
 """
-Layer 2: NLI Verifier using DeBERTa-v3.
+Layer 2: Conflict-Aware NLI Verifier using DeBERTa-v3.
 
-Loads a HuggingFace NLI model (cross-encoder/nli-deberta-v3-base) to
-verify Atomic Propositions against retrieved evidence. Each AP is
-classified as Entailment, Contradiction, or Neutral.
+Algorithmic Novelty (for M.Tech thesis):
 
-Implements the three-state verification from the thesis:
-- Entailment: Claim approved for generation compilation
-- Contradiction: AP rejected with negative constraints injected
-- Neutral: Evidence inconclusive, triggers expanded search
+**Conflict-Aware Weighted NLI Consensus Scoring**
+
+Instead of simple "first entailment wins" or "best entailment score" logic,
+this module implements a weighted consensus score across ALL retrieved passages:
+
+    S(p_i) = Σ_j  w_j · [P(entail)_j − P(contradict)_j]
+
+where:
+    p_i         = the i-th atomic proposition (claim to verify)
+    j           = index over retrieved evidence passages
+    w_j         = retrieval relevance weight for passage j (from the retriever)
+    P(entail)_j = NLI entailment probability for (passage_j, p_i)
+    P(contra)_j = NLI contradiction probability for (passage_j, p_i)
+
+The consensus score is compared against two configurable thresholds:
+    • accept_threshold (default 0.3):  S ≥ accept_threshold → ACCEPT
+    • reject_threshold (default −0.3): S ≤ reject_threshold → REJECT
+    •                                  otherwise → NEUTRAL
+
+This captures conflicting evidence signals rather than short-circuiting
+on the first entailment or contradiction, producing a more nuanced
+and publication-worthy verification result.
 """
 
 from __future__ import annotations
@@ -22,8 +38,11 @@ from loguru import logger
 from app.config import settings
 from app.models.schemas import (
     AtomicProposition,
+    ConflictAwareNLIResult,
+    ConsensusVerdict,
     Layer2Result,
     NLILabel,
+    NLIPassageScore,
     NLIResult,
     SearchResult,
 )
@@ -31,10 +50,12 @@ from app.models.schemas import (
 
 class NLIVerifier:
     """
-    Natural Language Inference verifier using DeBERTa-v3.
+    Natural Language Inference verifier using DeBERTa-v3 with
+    conflict-aware weighted consensus scoring.
 
     Classifies each (premise, hypothesis) pair into:
-    Entailment / Contradiction / Neutral
+    Entailment / Contradiction / Neutral, then aggregates
+    across passages using retrieval-weighted consensus.
     """
 
     # Label mapping for cross-encoder/nli-deberta-v3-base
@@ -51,23 +72,38 @@ class NLIVerifier:
         self,
         model_name: str | None = None,
         confidence_threshold: float | None = None,
+        accept_threshold: float = 0.3,
+        reject_threshold: float = -0.3,
         device: str = "cpu",
     ) -> None:
+        """
+        Args:
+            model_name: HuggingFace NLI model identifier.
+            confidence_threshold: Min softmax confidence for simple entailment.
+            accept_threshold: Consensus score S ≥ this → ACCEPT.
+            reject_threshold: Consensus score S ≤ this → REJECT.
+            device: Torch device.
+        """
         self._model_name = model_name or settings.nli_model_name
         self._confidence_threshold = (
             confidence_threshold or settings.nli_confidence_threshold
         )
+        self._accept_threshold = accept_threshold
+        self._reject_threshold = reject_threshold
         self._device = device
         self._model = None
         self._tokenizer = None
         logger.info(
-            "NLIVerifier initialized | model={} | threshold={}",
+            "NLIVerifier initialized | model={} | threshold={} "
+            "| accept_T={} | reject_T={}",
             self._model_name,
             self._confidence_threshold,
+            self._accept_threshold,
+            self._reject_threshold,
         )
 
     # -------------------------------------------------------------------------
-    # Model Loading
+    # Model Loading (cold-start safe)
     # -------------------------------------------------------------------------
 
     async def load_model(self) -> None:
@@ -95,7 +131,7 @@ class NLIVerifier:
         logger.info("NLI model loaded successfully")
 
     # -------------------------------------------------------------------------
-    # Single Claim Verification
+    # Single-Pair NLI Inference
     # -------------------------------------------------------------------------
 
     async def verify_claim(
@@ -161,7 +197,67 @@ class NLIVerifier:
         return label, confidence, all_scores
 
     # -------------------------------------------------------------------------
-    # Batch Verification
+    # Conflict-Aware Weighted Consensus
+    # -------------------------------------------------------------------------
+
+    def _compute_consensus(
+        self,
+        passage_scores: list[NLIPassageScore],
+    ) -> ConflictAwareNLIResult:
+        """
+        Compute the weighted consensus score across all passages.
+
+        S(p_i) = Σ_j  w_j · [P(entail)_j − P(contradict)_j]
+
+        Args:
+            passage_scores: Per-passage NLI breakdown with relevance weights.
+
+        Returns:
+            ConflictAwareNLIResult with the aggregate score and verdict.
+        """
+        if not passage_scores:
+            return ConflictAwareNLIResult(
+                consensus_score=0.0,
+                verdict=ConsensusVerdict.NEUTRAL,
+                passage_scores=[],
+                accept_threshold=self._accept_threshold,
+                reject_threshold=self._reject_threshold,
+            )
+
+        consensus = sum(ps.weighted_contribution for ps in passage_scores)
+
+        # Normalize by sum of weights to keep S in [-1, 1]
+        total_weight = sum(ps.relevance_weight for ps in passage_scores)
+        if total_weight > 0:
+            consensus /= total_weight
+
+        # Apply thresholds
+        if consensus >= self._accept_threshold:
+            verdict = ConsensusVerdict.ACCEPT
+        elif consensus <= self._reject_threshold:
+            verdict = ConsensusVerdict.REJECT
+        else:
+            verdict = ConsensusVerdict.NEUTRAL
+
+        return ConflictAwareNLIResult(
+            consensus_score=round(consensus, 6),
+            verdict=verdict,
+            passage_scores=passage_scores,
+            accept_threshold=self._accept_threshold,
+            reject_threshold=self._reject_threshold,
+        )
+
+    @staticmethod
+    def _consensus_verdict_to_nli_label(verdict: ConsensusVerdict) -> NLILabel:
+        """Map a ConsensusVerdict to the standard NLILabel enum."""
+        if verdict == ConsensusVerdict.ACCEPT:
+            return NLILabel.ENTAILMENT
+        elif verdict == ConsensusVerdict.REJECT:
+            return NLILabel.CONTRADICTION
+        return NLILabel.NEUTRAL
+
+    # -------------------------------------------------------------------------
+    # Batch Verification with Consensus
     # -------------------------------------------------------------------------
 
     async def verify_propositions(
@@ -170,29 +266,35 @@ class NLIVerifier:
         evidence_map: dict[int, list[SearchResult]],
     ) -> list[NLIResult]:
         """
-        Verify multiple Atomic Propositions against their evidence.
+        Verify multiple Atomic Propositions against their evidence
+        using conflict-aware weighted consensus.
 
-        For each AP, it selects the best evidence and runs NLI.
-        If multiple evidence pieces exist, the most favorable result wins.
+        For each AP, ALL retrieved passages are scored. The weighted
+        consensus formula is applied to produce a holistic verdict
+        rather than short-circuiting on the first entailment.
 
         Args:
             propositions: List of APs to verify.
             evidence_map: Dict mapping prop ID → search results.
 
         Returns:
-            List of NLIResult objects.
+            List of NLIResult objects with conflict_aware_result populated.
         """
         tasks = []
         for prop in propositions:
             evidence = evidence_map.get(prop.id, [])
-            tasks.append(self._verify_proposition_against_evidence(prop, evidence))
+            tasks.append(
+                self._verify_proposition_consensus(prop, evidence)
+            )
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         nli_results: list[NLIResult] = []
         for prop, result in zip(propositions, results):
             if isinstance(result, Exception):
-                logger.warning("NLI verification failed for AP {}: {}", prop.id, result)
+                logger.warning(
+                    "NLI verification failed for AP {}: {}", prop.id, result
+                )
                 # Default to neutral on error
                 nli_results.append(
                     NLIResult(
@@ -201,6 +303,7 @@ class NLIVerifier:
                         confidence=0.0,
                         premise_used="[Error during verification]",
                         all_scores={},
+                        conflict_aware_result=None,
                     )
                 )
             else:
@@ -208,12 +311,20 @@ class NLIVerifier:
 
         return nli_results
 
-    async def _verify_proposition_against_evidence(
+    async def _verify_proposition_consensus(
         self,
         proposition: AtomicProposition,
         evidence: list[SearchResult],
     ) -> NLIResult:
-        """Verify a single AP against all available evidence, pick best result."""
+        """
+        Verify a single AP against ALL available evidence using weighted
+        consensus scoring.
+
+        Each passage contributes:
+            w_j · (P(entail) − P(contradict))
+
+        to the final consensus score S(p_i).
+        """
         if not evidence:
             return NLIResult(
                 proposition=proposition,
@@ -221,45 +332,75 @@ class NLIVerifier:
                 confidence=0.0,
                 premise_used="[No evidence found]",
                 all_scores={},
+                conflict_aware_result=None,
             )
 
-        best_result: NLIResult | None = None
+        # Score ALL passages (no short-circuiting)
+        passage_scores: list[NLIPassageScore] = []
+        best_premise = evidence[0].snippet
         best_entailment_score = -1.0
 
         for source in evidence:
-            label, confidence, all_scores = await self.verify_claim(
+            _label, _confidence, all_scores = await self.verify_claim(
                 premise=source.snippet,
                 hypothesis=proposition.text,
             )
 
-            result = NLIResult(
-                proposition=proposition,
-                label=label,
-                confidence=confidence,
-                premise_used=source.snippet,
-                all_scores=all_scores,
+            # Retrieval relevance weight w_j
+            w_j = max(source.relevance_score, 0.01)  # Floor at 0.01
+
+            p_entail = all_scores.get("entailment", 0.0)
+            p_contra = all_scores.get("contradiction", 0.0)
+            p_neutral = all_scores.get("neutral", 0.0)
+            contribution = w_j * (p_entail - p_contra)
+
+            passage_scores.append(
+                NLIPassageScore(
+                    passage_snippet=source.snippet[:500],  # Truncate for serialization
+                    source_url=source.url,
+                    relevance_weight=round(w_j, 6),
+                    entailment_prob=round(p_entail, 6),
+                    contradiction_prob=round(p_contra, 6),
+                    neutral_prob=round(p_neutral, 6),
+                    weighted_contribution=round(contribution, 6),
+                )
             )
 
-            # If we find an entailment, that's the best outcome
-            if label == NLILabel.ENTAILMENT:
-                return result
+            # Track best premise for backward-compatible `premise_used` field
+            if p_entail > best_entailment_score:
+                best_entailment_score = p_entail
+                best_premise = source.snippet
 
-            # Track the result with highest entailment score as fallback
-            entailment_score = all_scores.get("entailment", 0.0)
-            if entailment_score > best_entailment_score:
-                best_entailment_score = entailment_score
-                best_result = result
+        # Aggregate consensus
+        consensus_result = self._compute_consensus(passage_scores)
 
-            # If contradiction found, return immediately
-            if label == NLILabel.CONTRADICTION:
-                return result
+        # Derive the top-level NLI label from the consensus verdict
+        consensus_label = self._consensus_verdict_to_nli_label(
+            consensus_result.verdict
+        )
 
-        return best_result or NLIResult(
+        # Confidence = absolute magnitude of the consensus score (0–1 range)
+        consensus_confidence = min(abs(consensus_result.consensus_score), 1.0)
+
+        # Build the all_scores dict from the best-scoring passage for backward compat
+        best_all_scores = {}
+        if passage_scores:
+            best_ps = max(
+                passage_scores, key=lambda ps: ps.entailment_prob
+            )
+            best_all_scores = {
+                "entailment": best_ps.entailment_prob,
+                "contradiction": best_ps.contradiction_prob,
+                "neutral": best_ps.neutral_prob,
+            }
+
+        return NLIResult(
             proposition=proposition,
-            label=NLILabel.NEUTRAL,
-            confidence=0.0,
-            premise_used=evidence[0].snippet if evidence else "",
-            all_scores={},
+            label=consensus_label,
+            confidence=round(consensus_confidence, 6),
+            premise_used=best_premise,
+            all_scores=best_all_scores,
+            conflict_aware_result=consensus_result,
         )
 
     # -------------------------------------------------------------------------
@@ -291,7 +432,10 @@ class NLIVerifier:
             refined = refined.replace(r.proposition.source_span, "")
             # If we can't remove by source_span, remove by proposition text
             if r.proposition.text in refined:
-                refined = refined.replace(r.proposition.text, "[REMOVED: contradicted by evidence]")
+                refined = refined.replace(
+                    r.proposition.text,
+                    "[REMOVED: contradicted by evidence]",
+                )
 
         # Clean up empty lines
         lines = [line for line in refined.split('\n') if line.strip()]
@@ -323,5 +467,6 @@ class NLIVerifier:
         del self._tokenizer
         self._model = None
         self._tokenizer = None
-        torch.cuda.empty_cache() if torch.cuda.is_available() else None
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         logger.info("NLI model unloaded")

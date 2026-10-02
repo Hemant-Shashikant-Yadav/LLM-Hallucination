@@ -80,6 +80,24 @@ class FrameworkSettings(BaseSettings):
         le=1.0,
         description="Minimum softmax confidence to accept an Entailment label.",
     )
+    nli_accept_threshold: float = Field(
+        default=0.3,
+        ge=-1.0,
+        le=1.0,
+        description=(
+            "Consensus score S ≥ this → ACCEPT the claim. "
+            "Used by the conflict-aware weighted NLI verifier."
+        ),
+    )
+    nli_reject_threshold: float = Field(
+        default=-0.3,
+        ge=-1.0,
+        le=1.0,
+        description=(
+            "Consensus score S ≤ this → REJECT the claim. "
+            "Used by the conflict-aware weighted NLI verifier."
+        ),
+    )
     search_backend: Literal["duckduckgo", "tavily", "both"] = Field(
         default="duckduckgo",
         description="Web search backend for evidence retrieval.",
