@@ -33,7 +33,8 @@ class ActivationExtractor:
         self,
         model_name: str | None = None,
         layer_fraction: float | None = None,
-        device: str = "cpu",
+        device: str | None = None,
+        use_fp16: bool | None = None,
     ) -> None:
         """
         Initialize the activation extractor.
@@ -42,10 +43,12 @@ class ActivationExtractor:
             model_name: HuggingFace model identifier (defaults to config).
             layer_fraction: Fraction threshold; layers beyond this are probed.
             device: Torch device ('cpu' or 'cuda').
+            use_fp16: Use float16 on CUDA.
         """
         self._model_name = model_name or settings.probe_model_name
         self._layer_fraction = layer_fraction or settings.probe_layer_fraction
-        self._device = device
+        self._device = device or settings.device
+        self._use_fp16 = use_fp16 if use_fp16 is not None else settings.use_fp16
         self._model: AutoModelForCausalLM | None = None
         self._tokenizer: AutoTokenizer | None = None
         self._hook_handles: list[torch.utils.hooks.RemovableHook] = []
@@ -53,9 +56,10 @@ class ActivationExtractor:
         self._target_layer_indices: list[int] = []
 
         logger.info(
-            "ActivationExtractor initialized | model={} | device={}",
+            "ActivationExtractor initialized | model={} | device={} | fp16={}",
             self._model_name,
             self._device,
+            self._use_fp16,
         )
 
     # -------------------------------------------------------------------------
@@ -78,9 +82,14 @@ class ActivationExtractor:
         if self._tokenizer.pad_token is None:
             self._tokenizer.pad_token = self._tokenizer.eos_token
 
+        torch_dtype = (
+            torch.float16
+            if (str(self._device).startswith("cuda") and self._use_fp16)
+            else torch.float32
+        )
         self._model = AutoModelForCausalLM.from_pretrained(
             self._model_name,
-            torch_dtype=torch.float32,
+            torch_dtype=torch_dtype,
             device_map=self._device,
             trust_remote_code=True,
             output_hidden_states=True,

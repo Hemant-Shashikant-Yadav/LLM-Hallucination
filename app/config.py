@@ -18,6 +18,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
+def _default_device() -> str:
+    try:
+        import torch
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    except Exception:
+        return "cpu"
+
+
 class FrameworkSettings(BaseSettings):
     """
     Global configuration for the Defense-in-Depth pipeline.
@@ -32,6 +40,18 @@ class FrameworkSettings(BaseSettings):
         env_prefix="DID_",
         case_sensitive=False,
         extra="ignore",
+    )
+
+    # -------------------------------------------------------------------------
+    # Compute Hardware Configuration
+    # -------------------------------------------------------------------------
+    device: str = Field(
+        default_factory=_default_device,
+        description="Compute device ('cuda' or 'cpu'). Auto-detects GPU if available.",
+    )
+    use_fp16: bool = Field(
+        default=True,
+        description="Use FP16 precision on CUDA for significant VRAM reduction and speedup.",
     )
 
     # -------------------------------------------------------------------------

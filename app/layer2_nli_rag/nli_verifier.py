@@ -74,7 +74,7 @@ class NLIVerifier:
         confidence_threshold: float | None = None,
         accept_threshold: float = 0.3,
         reject_threshold: float = -0.3,
-        device: str = "cpu",
+        device: str | None = None,
     ) -> None:
         """
         Args:
@@ -82,7 +82,7 @@ class NLIVerifier:
             confidence_threshold: Min softmax confidence for simple entailment.
             accept_threshold: Consensus score S ≥ this → ACCEPT.
             reject_threshold: Consensus score S ≤ this → REJECT.
-            device: Torch device.
+            device: Torch device ('cuda' or 'cpu').
         """
         self._model_name = model_name or settings.nli_model_name
         self._confidence_threshold = (
@@ -90,16 +90,17 @@ class NLIVerifier:
         )
         self._accept_threshold = accept_threshold
         self._reject_threshold = reject_threshold
-        self._device = device
+        self._device = device or settings.device
         self._model = None
         self._tokenizer = None
         logger.info(
             "NLIVerifier initialized | model={} | threshold={} "
-            "| accept_T={} | reject_T={}",
+            "| accept_T={} | reject_T={} | device={}",
             self._model_name,
             self._confidence_threshold,
             self._accept_threshold,
             self._reject_threshold,
+            self._device,
         )
 
     # -------------------------------------------------------------------------

@@ -102,8 +102,14 @@ class SearchRetriever:
         Returns:
             Dict mapping proposition ID → list of search results.
         """
+        sem = asyncio.Semaphore(2)
+
+        async def _bounded_search(p_text: str) -> list[SearchResult]:
+            async with sem:
+                return await self.search(p_text)
+
         tasks = [
-            self.search(prop.text)
+            _bounded_search(prop.text)
             for prop in propositions
         ]
 

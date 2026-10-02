@@ -98,6 +98,11 @@ class DualHeadUncertaintyClassifier(nn.Module):
         if h.dim() == 1:
             h = h.unsqueeze(0)
 
+        # Ensure tensor matches classifier device and dtype
+        device = self.entropy_head.weight.device
+        dtype = self.entropy_head.weight.dtype
+        h = h.to(device=device, dtype=dtype)
+
         h_sem = self.sigmoid(self.entropy_head(h))  # [B, 1]
         router_logits = self.router_head(h)          # [B, 2]
 
@@ -121,10 +126,12 @@ class SurrogateExtractor:
     def __init__(
         self,
         model_name: str | None = None,
-        device: str = "cpu",
+        device: str | None = None,
+        use_fp16: bool | None = None,
     ) -> None:
         self._model_name = model_name or settings.probe_model_name
-        self._device = device
+        self._device = device or settings.device
+        self._use_fp16 = use_fp16 if use_fp16 is not None else settings.use_fp16
         self._model = None
         self._tokenizer = None
         self._final_hidden_state: torch.Tensor | None = None
@@ -133,9 +140,10 @@ class SurrogateExtractor:
         self._is_loaded = False
 
         logger.info(
-            "SurrogateExtractor created | model={} | device={}",
+            "SurrogateExtractor created | model={} | device={} | fp16={}",
             self._model_name,
             self._device,
+            self._use_fp16,
         )
 
     @property
@@ -169,9 +177,14 @@ class SurrogateExtractor:
         if self._tokenizer.pad_token is None:
             self._tokenizer.pad_token = self._tokenizer.eos_token
 
+        torch_dtype = (
+            torch.float16
+            if (str(self._device).startswith("cuda") and self._use_fp16)
+            else torch.float32
+        )
         self._model = AutoModelForCausalLM.from_pretrained(
             self._model_name,
-            torch_dtype=torch.float32,
+            torch_dtype=torch_dtype,
             device_map=self._device,
             trust_remote_code=True,
         )
@@ -355,14 +368,16 @@ class TriageEngine:
         self,
         t_safe: float | None = None,
         probe_weights_path: Path | None = None,
+        device: str | None = None,
     ) -> None:
         self._t_safe = t_safe or settings.t_safe
         self._probe_weights_path = probe_weights_path or settings.probe_weights_path
+        self._device = device or settings.device
         self._classifier: DualHeadUncertaintyClassifier | None = None
         self._surrogate: SurrogateExtractor | None = None
         self._is_trained = False
 
-        logger.info("TriageEngine initialized | T_safe={}", self._t_safe)
+        logger.info("TriageEngine initialized | T_safe={} | device={}", self._t_safe, self._device)
 
     # -------------------------------------------------------------------------
     # Probe Lifecycle
@@ -396,6 +411,7 @@ class TriageEngine:
                 "Using logprob-based entropy proxy."
             )
 
+        self._classifier.to(self._device)
         self._classifier.eval()
 
     def set_surrogate(self, surrogate: SurrogateExtractor) -> None:

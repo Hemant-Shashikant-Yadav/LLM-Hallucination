@@ -47,10 +47,15 @@ class DefenseInDepthRouter:
         # Initialize all components
         self._ollama = OllamaClient()
 
-        # Layer 1
-        self._activation_extractor = ActivationExtractor()
-        self._surrogate_extractor = SurrogateExtractor()
-        self._triage_engine = TriageEngine()
+        # Layer 1: Surrogate Probing is the primary thesis architecture
+        self._surrogate_extractor = SurrogateExtractor(
+            device=settings.device,
+            use_fp16=settings.use_fp16,
+        )
+        self._activation_extractor: ActivationExtractor | None = None
+        self._triage_engine = TriageEngine(
+            device=settings.device,
+        )
 
         # Layer 2
         self._proposition_parser = PropositionParser(self._ollama)
@@ -58,6 +63,7 @@ class DefenseInDepthRouter:
         self._nli_verifier = NLIVerifier(
             accept_threshold=settings.nli_accept_threshold,
             reject_threshold=settings.nli_reject_threshold,
+            device=settings.device,
         )
 
         # Layer 3
@@ -66,7 +72,7 @@ class DefenseInDepthRouter:
         self._judge = HalluCleanJudge(self._ollama)
 
         self._initialized = False
-        logger.info("DefenseInDepthRouter created")
+        logger.info("DefenseInDepthRouter created | device={}", settings.device)
 
     # -------------------------------------------------------------------------
     # Initialization
@@ -84,44 +90,50 @@ class DefenseInDepthRouter:
         await self._ollama.validate_models()
         await self._ollama.warmup()
 
-        # Load probe model (Layer 1)
-        try:
-            await self._activation_extractor.load_model()
-            # Initialize the probe with correct dimensions
-            # We need to do a dummy extraction to get the hidden dim
-            dummy_bundle = await self._activation_extractor.extract_activations(
-                "test", max_length=32
-            )
-            input_dim = dummy_bundle.flattened().shape[0]
-            self._triage_engine.initialize_probe(input_dim)
-            logger.info("Layer 1 (SEP) initialized | probe_input_dim={}", input_dim)
-        except Exception as exc:
-            logger.warning(
-                "Layer 1 probe model could not be loaded (will use logprob proxy): {}",
-                exc,
-            )
-
-        # Load surrogate extractor (Layer 1 — Surrogate Proxy Probing)
+        # Load surrogate extractor (Layer 1 — Primary Thesis Architecture)
+        surrogate_loaded = False
         try:
             await self._surrogate_extractor.load_model()
             self._triage_engine.set_surrogate(self._surrogate_extractor)
 
-            # Re-initialize the dual-head classifier with surrogate hidden dim
+            # Initialize dual-head classifier with surrogate hidden dim
             surrogate_dim = self._surrogate_extractor.hidden_dim
             self._triage_engine.initialize_probe(surrogate_dim)
+            surrogate_loaded = True
             logger.info(
-                "Layer 1 surrogate probe attached | hidden_dim={}",
+                "Layer 1 surrogate probe attached | hidden_dim={} | device={}",
                 surrogate_dim,
+                settings.device,
             )
         except Exception as exc:
             logger.warning(
                 "Surrogate extractor could not be loaded: {}", exc
             )
 
+        # Fallback: Load legacy activation extractor ONLY if surrogate failed
+        if not surrogate_loaded:
+            try:
+                self._activation_extractor = ActivationExtractor(
+                    device=settings.device,
+                    use_fp16=settings.use_fp16,
+                )
+                await self._activation_extractor.load_model()
+                dummy_bundle = await self._activation_extractor.extract_activations(
+                    "test", max_length=32
+                )
+                input_dim = dummy_bundle.flattened().shape[0]
+                self._triage_engine.initialize_probe(input_dim)
+                logger.info("Layer 1 legacy probe initialized | probe_input_dim={}", input_dim)
+            except Exception as exc:
+                logger.warning(
+                    "Layer 1 legacy probe could not be loaded (will use logprob proxy): {}",
+                    exc,
+                )
+
         # Load NLI model (Layer 2)
         try:
             await self._nli_verifier.load_model()
-            logger.info("Layer 2 (NLI) initialized")
+            logger.info("Layer 2 (NLI) initialized | device={}", settings.device)
         except Exception as exc:
             logger.warning("Layer 2 NLI model could not be loaded: {}", exc)
 
@@ -137,7 +149,8 @@ class DefenseInDepthRouter:
     async def shutdown(self) -> None:
         """Clean up resources during shutdown."""
         logger.info("Shutting down Defense-in-Depth pipeline...")
-        self._activation_extractor.unload()
+        if self._activation_extractor:
+            self._activation_extractor.unload()
         self._surrogate_extractor.unload()
         self._nli_verifier.unload()
         self._initialized = False
@@ -235,41 +248,49 @@ class DefenseInDepthRouter:
         """Run Layer 1 triage on the draft response."""
         from app.models.schemas import TriageResult as TR
 
-        try:
-            # Extract activations from probe model (legacy path)
-            activation_bundle = await self._activation_extractor.extract_activations(
-                draft_response
-            )
-
-            # Run triage — the engine will prefer the surrogate path
-            # if a SurrogateExtractor is attached, and fall back to
-            # the activation_bundle or logprob proxy otherwise.
-            return await self._triage_engine.triage(
-                prompt=prompt,
-                draft_response=draft_response,
-                activation_bundle=activation_bundle,
-            )
-
-        except Exception as exc:
-            logger.warning("Layer 1 activation extraction failed: {}", exc)
-            # Fallback: attempt surrogate-only triage, then pure proxy
+        # Primary: Surrogate Extractor is loaded and active
+        if self._surrogate_extractor.is_loaded:
             try:
                 return await self._triage_engine.triage(
                     prompt=prompt,
                     draft_response=draft_response,
                     activation_bundle=None,
-                    generation_logprobs=None,
                 )
-            except Exception:
-                return TR(
-                    decision=TriageDecision.KNOWLEDGE_UNCERTAIN,
-                    semantic_entropy=0.7,
-                    hallucination_probability=0.5,
-                    error_classification=None,
-                    threshold_used=settings.t_safe,
+            except Exception as exc:
+                logger.warning("Layer 1 surrogate triage failed: {}", exc)
+
+        # Fallback: legacy activation extractor if loaded
+        if self._activation_extractor is not None:
+            try:
+                activation_bundle = await self._activation_extractor.extract_activations(
+                    draft_response
+                )
+                return await self._triage_engine.triage(
+                    prompt=prompt,
                     draft_response=draft_response,
-                    latency_ms=0.0,
+                    activation_bundle=activation_bundle,
                 )
+            except Exception as exc:
+                logger.warning("Layer 1 legacy activation extraction failed: {}", exc)
+
+        # Fallback: pure proxy mode
+        try:
+            return await self._triage_engine.triage(
+                prompt=prompt,
+                draft_response=draft_response,
+                activation_bundle=None,
+                generation_logprobs=None,
+            )
+        except Exception:
+            return TR(
+                decision=TriageDecision.KNOWLEDGE_UNCERTAIN,
+                semantic_entropy=0.7,
+                hallucination_probability=0.5,
+                error_classification=None,
+                threshold_used=settings.t_safe,
+                draft_response=draft_response,
+                latency_ms=0.0,
+            )
 
     # -------------------------------------------------------------------------
     # Layer 2: NLI-RAG Processing

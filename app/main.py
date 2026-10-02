@@ -124,6 +124,8 @@ async def health_check() -> dict:
             "probe_model": settings.probe_model_name,
             "nli_model": settings.nli_model_name,
             "search_backend": settings.search_backend,
+            "device": settings.device,
+            "use_fp16": settings.use_fp16,
         },
         "initialized": _router is not None and _router._initialized,
     }
