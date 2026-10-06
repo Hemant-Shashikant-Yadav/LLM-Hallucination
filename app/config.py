@@ -161,7 +161,7 @@ class FrameworkSettings(BaseSettings):
         description="Base URL for the local Ollama server.",
     )
     ollama_model: str = Field(
-        default="llama3.1:8b",
+        default="llama2:7b",
         description="Default Ollama model for text generation.",
     )
     ollama_timeout: float = Field(

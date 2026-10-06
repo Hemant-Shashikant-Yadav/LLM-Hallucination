@@ -178,7 +178,7 @@ async def query_api(
     """
     body = {
         "prompt": prompt,
-        "model": "llama3.1:8b",
+        "model": "llama2:7b",
         "include_audit": True,
     }
     try:

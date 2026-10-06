@@ -53,7 +53,7 @@ Hyperparameters were declared using `pydantic-settings`:
 ```python
 class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
-    default_model: str = "llama3.1:8b"
+    default_model: str = "llama2:7b"
     safe_threshold: float = 0.55             # T_safe
     nli_model_name: str = "cross-encoder/nli-deberta-v3-small"
     nli_entailment_threshold: float = 0.60   # tau_ent

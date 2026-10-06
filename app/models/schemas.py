@@ -65,7 +65,7 @@ class QueryRequest(BaseModel):
     """Incoming user query to the framework."""
 
     prompt: str = Field(..., min_length=1, description="User prompt / question")
-    model: str = Field(default="llama3.1:8b", description="Ollama model identifier")
+    model: str = Field(default="llama2:7b", description="Ollama model identifier")
     force_layer: int | None = Field(
         default=None,
         ge=1,

@@ -44,7 +44,7 @@ Large Language Model (LLM) hallucinations. Developed as part of an M.Tech thesis
 ### Prerequisites
 
 - Python 3.11+ (tested on 3.14.2)
-- [Ollama](https://ollama.ai/) running locally with `llama3.1:8b`
+- [Ollama](https://ollama.ai/) running locally with `llama2:7b`
 
 ### Installation
 
@@ -104,7 +104,7 @@ All settings can be configured via environment variables or a `.env` file:
 |---|---|---|
 | `DID_T_SAFE` | `0.55` | Safety threshold for semantic entropy |
 | `DID_NLI_CONFIDENCE_THRESHOLD` | `0.8` | Min confidence for NLI entailment |
-| `DID_OLLAMA_MODEL` | `llama3.1:8b` | Default Ollama model |
+| `DID_OLLAMA_MODEL` | `llama2:7b` | Default Ollama model |
 | `DID_OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
 | `DID_PROBE_MODEL_NAME` | `TinyLlama/TinyLlama-1.1B-Chat-v1.0` | Probe model |
 | `DID_NLI_MODEL_NAME` | `cross-encoder/nli-deberta-v3-base` | NLI model |

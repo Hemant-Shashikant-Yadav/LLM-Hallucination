@@ -69,7 +69,7 @@ async def lifespan(app: FastAPI):
 #### 2.2. Configuration Registry (`app/config.py`)
 `app/config.py` centralizes all hyperparameters using `pydantic-settings`:
 * `ollama_base_url`: Host address for the local inference daemon (`http://localhost:11434`).
-* `default_model`: Generator model identifier (`llama3.1:8b`).
+* `default_model`: Generator model identifier (`llama2:7b`).
 * `safe_threshold` ($T_{safe}$): Semantic entropy threshold (`0.55`).
 * `nli_model_name`: Cross-encoder checkpoint (`cross-encoder/nli-deberta-v3-small`).
 * `nli_entailment_threshold` ($\tau_{ent}$): Entailment cutoff (`0.60`).
