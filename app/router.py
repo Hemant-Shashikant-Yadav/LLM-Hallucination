@@ -388,7 +388,7 @@ class DefenseInDepthRouter:
         graph, reasoning_traces = await self._executor.execute_plan(graph)
 
         # Stages 3 & 4: Judge and Refine
-        layer3_result = await self._judge.judge_and_refine(graph, reasoning_traces)
+        layer3_result = await self._judge.judge_and_refine(graph, reasoning_traces, draft_response)
         layer3_result.latency_ms = (time.perf_counter() - layer3_start) * 1000
 
         total_ms = (time.perf_counter() - start) * 1000

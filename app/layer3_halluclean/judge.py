@@ -101,6 +101,7 @@ class HalluCleanJudge:
         self,
         graph: ExecutionGraph,
         reasoning_traces: list[str],
+        draft_response: str = "",
     ) -> Layer3Result:
         """
         Run Stages 3 and 4: Judge the reasoning chain and refine the output.
@@ -122,6 +123,7 @@ class HalluCleanJudge:
             graph.query,
             reasoning_traces,
             judgment,
+            draft_response,
         )
 
         elapsed_ms = (time.perf_counter() - start) * 1000
@@ -215,8 +217,15 @@ class HalluCleanJudge:
         query: str,
         reasoning_traces: list[str],
         judgment: JudgmentResult,
+        draft_response: str = "",
     ) -> str:
         """Rewrite the verified reasoning into polished natural language."""
+        # If the reasoning chain confirms there are no violations, 
+        # return the original draft response to avoid degrading correct answers.
+        if judgment.is_consistent and not judgment.violations and draft_response:
+            logger.info("Reasoning is consistent, returning original draft to prevent degradation")
+            return draft_response
+
         traces_text = "\n\n".join(reasoning_traces)
 
         # Build violation context if any were found

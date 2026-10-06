@@ -58,7 +58,7 @@ class FrameworkSettings(BaseSettings):
     # Layer 1: Semantic Entropy Probe
     # -------------------------------------------------------------------------
     t_safe: float = Field(
-        default=0.55,
+        default=0.35,
         ge=0.0,
         le=1.0,
         description=(
@@ -95,13 +95,13 @@ class FrameworkSettings(BaseSettings):
         description="HuggingFace NLI model for claim verification.",
     )
     nli_confidence_threshold: float = Field(
-        default=0.8,
+        default=0.65,
         ge=0.0,
         le=1.0,
         description="Minimum softmax confidence to accept an Entailment label.",
     )
     nli_accept_threshold: float = Field(
-        default=0.3,
+        default=0.15,
         ge=-1.0,
         le=1.0,
         description=(
@@ -110,7 +110,7 @@ class FrameworkSettings(BaseSettings):
         ),
     )
     nli_reject_threshold: float = Field(
-        default=-0.3,
+        default=-0.15,
         ge=-1.0,
         le=1.0,
         description=(

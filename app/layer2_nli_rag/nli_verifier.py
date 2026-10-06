@@ -426,24 +426,33 @@ class NLIVerifier:
         contradicted = [r for r in nli_results if r.label == NLILabel.CONTRADICTION]
         neutral = [r for r in nli_results if r.label == NLILabel.NEUTRAL]
 
-        # Build refined response by removing contradicted claims
+        # Build refined response by handling contradicted claims
         refined = draft_response
+        corrections = []
+        
         for r in contradicted:
-            # Remove contradicted proposition text from the response
+            # Try to remove contradicted proposition text from the response
             refined = refined.replace(r.proposition.source_span, "")
-            # If we can't remove by source_span, remove by proposition text
             if r.proposition.text in refined:
-                refined = refined.replace(
-                    r.proposition.text,
-                    "[REMOVED: contradicted by evidence]",
-                )
+                refined = refined.replace(r.proposition.text, "")
+                
+            if r.premise_used and r.premise_used != "[No evidence found]":
+                # Add the retrieved evidence as a correction
+                corrections.append(f"- The claim '{r.proposition.text}' is incorrect. Evidence indicates: {r.premise_used[:200]}...")
 
         # Clean up empty lines
         lines = [line for line in refined.split('\n') if line.strip()]
         refined = '\n'.join(lines)
 
+        # Append corrections to the end of the response
+        if corrections:
+            refined += "\n\n### Factual Corrections ###\n" + "\n".join(corrections)
+
         if not refined.strip():
-            refined = draft_response  # Fallback to original if everything was removed
+            if corrections:
+                refined = "\n\n### Factual Corrections ###\n" + "\n".join(corrections)
+            else:
+                refined = draft_response  # Fallback to original if everything was removed
 
         return Layer2Result(
             propositions=propositions,
