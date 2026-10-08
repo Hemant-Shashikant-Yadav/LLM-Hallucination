@@ -164,6 +164,10 @@ class FrameworkSettings(BaseSettings):
         default="llama2:7b",
         description="Default Ollama model for text generation.",
     )
+    ollama_judge_model: str = Field(
+        default="llama3.1:8b",
+        description="Stronger model used exclusively for Layer 2 NLI parsing and Layer 3 HalluClean reasoning.",
+    )
     ollama_timeout: float = Field(
         default=600.0,
         ge=5.0,

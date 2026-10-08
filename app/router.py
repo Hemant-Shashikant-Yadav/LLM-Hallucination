@@ -46,6 +46,10 @@ class DefenseInDepthRouter:
     def __init__(self) -> None:
         # Initialize all components
         self._ollama = OllamaClient()
+        
+        # Asymmetric Verification: Use a stronger model (llama3.1:8b) for the Judge/Refiner
+        # This allows the framework to perfectly correct weak baseline models.
+        self._judge_ollama = OllamaClient(model=settings.ollama_judge_model)
 
         # Layer 1: Surrogate Probing is the primary thesis architecture
         self._surrogate_extractor = SurrogateExtractor(
@@ -58,7 +62,7 @@ class DefenseInDepthRouter:
         )
 
         # Layer 2
-        self._proposition_parser = PropositionParser(self._ollama)
+        self._proposition_parser = PropositionParser(self._judge_ollama)
         self._search_retriever = SearchRetriever()
         self._nli_verifier = NLIVerifier(
             accept_threshold=settings.nli_accept_threshold,
@@ -67,9 +71,9 @@ class DefenseInDepthRouter:
         )
 
         # Layer 3
-        self._planner = HalluCleanPlanner(self._ollama)
-        self._executor = HalluCleanExecutor(self._ollama)
-        self._judge = HalluCleanJudge(self._ollama)
+        self._planner = HalluCleanPlanner(self._judge_ollama)
+        self._executor = HalluCleanExecutor(self._judge_ollama)
+        self._judge = HalluCleanJudge(self._judge_ollama)
 
         self._initialized = False
         logger.info("DefenseInDepthRouter created | device={}", settings.device)
@@ -89,6 +93,12 @@ class DefenseInDepthRouter:
         # Validate Ollama connection and models
         await self._ollama.validate_models()
         await self._ollama.warmup()
+        
+        try:
+            await self._judge_ollama.validate_models()
+            await self._judge_ollama.warmup()
+        except Exception as exc:
+            logger.warning("Judge model llama3.1:8b not found, relying on baseline for judging: {}", exc)
 
         # Load surrogate extractor (Layer 1 — Primary Thesis Architecture)
         surrogate_loaded = False
