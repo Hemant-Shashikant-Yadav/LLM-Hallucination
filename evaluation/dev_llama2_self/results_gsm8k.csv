@@ -1,0 +1,70 @@
+dataset,sample_id,prompt,config,answer,total_latency_ms,wall_latency_ms,tokens_generated,triage_decision,classified_error_type,semantic_entropy,layers_invoked,answer_changed,reference_answer,correct_answers,incorrect_answers,numerical_answer,is_correct,is_correct_legacy
+gsm8k,gsm_500,"Together Lily, David, and Bodhi collected 43 insects. Lily found 7 more than David. David found half of what Bodhi found. How many insects did Lily find?",full_framework,"Program-verified solution:
+```python
+def solution():
+    # Calculate the total number of insects collected by Lily, David, and Bodhi
+    total = 43 + 7 + (1/2) * 43
+    print(f""Total number of insects: {total}"")
+
+    # Calculate the number of insects found by Lily
+    lily_insects = total - 7
+    print(f""Number of insects found by Lily: {lily_insects}"")
+
+    # Calculate the number of insects found by David
+    david_insects = total - 7 - (1/2) * 43
+    print(f""Number of insects found by David: {david_insects}"")
+
+    # Calculate the number of insects found by Bodhi
+    bodhi_insects = 43
+    print(f""Number of insects found by Bodhi: {bodhi_insects}"")
+
+    # Find the difference between the number of insects found by Lily and the number of insects found by Bodhi
+    diff = lily_insects - bodhi_insects
+    print(f""Difference between Lily and Bodhi: {diff}"")
+
+    # Find the number of insects found by Lily
+    lily_insects = total - 7
+    print(f""Number of insects found by Lily: {lily_insects}"")
+
+    return lily_insects
+```
+Final answer: 64.5",117899.3,117913.8,4499,reasoning_uncertain,reasoning,0.8277293767706428,layer1_layer3,True,16,"[""16""]",[],16,False,False
+gsm8k,gsm_500,"Together Lily, David, and Bodhi collected 43 insects. Lily found 7 more than David. David found half of what Bodhi found. How many insects did Lily find?",baseline,"
+Let's break this down step by step:
+
+1. Lily found 7 more than David, so Lily found 7 + David's number of insects.
+2. David found half of what Bodhi found, so David found Bodhi's number of insects / 2.
+3. Together, Lily, David, and Bodhi collected 43 insects, so the total number of insects is 7 + Bodhi's number of insects + David's number of insects + Lily's number of insects.
+
+Now we can use the information we have to find out how many insects Lily found:
+
+Lily found 7 more than David, so Lily found 7 + David's number of insects.
+David found half of what Bodhi found, so David found Bodhi's number of insects / 2.
+Bodhi found x insects, where x is a number.
+
+We know that together, the three of them collected 43 insects, so the total number of insects is:
+7 + Bodhi's number of insects + David's number of insects + Lily's number of insects = 43.
+
+Now we can solve for Lily's number of insects:
+Lily's number of insects = 43 - (Bodhi's number of insects + David's number of insects)
+= 43 - (x + (x / 2))
+= 43 - x - x / 2
+= 43 - 2x
+
+So Lily found 2x insects.",18772.6,18772.6,433,,,,draft_only,False,16,"[""16""]",[],16,False,False
+gsm8k,gsm_501,Mariah’s grandma was teaching her to knit. Mariah used 1/4 of a skein of yarn. Her grandma used 1/2 of a skein of yarn. There are 364 yards in a skein of yarn. How many yards of yarn did they use altogether?,full_framework,"
+To find out how many yards of yarn Mariah and her grandma used altogether, we need to find the total number of yards used by both of them.
+
+Mariah used 1/4 of a skein of yarn, which means she used 364 / 4 = 91 yards of yarn.
+
+Her grandma used 1/2 of a skein of yarn, which means she used 364 / 2 = 182 yards of yarn.
+
+So, altogether Mariah and her grandma used 91 + 182 = 273 yards of yarn.",117585.9,117593.5,3582,reasoning_uncertain,reasoning,-0.0,layer1_layer3,False,273,"[""273""]",[],273,True,True
+gsm8k,gsm_501,Mariah’s grandma was teaching her to knit. Mariah used 1/4 of a skein of yarn. Her grandma used 1/2 of a skein of yarn. There are 364 yards in a skein of yarn. How many yards of yarn did they use altogether?,baseline,"
+To find out how many yards of yarn Mariah and her grandma used altogether, we need to find the total number of yards used by both of them.
+
+Mariah used 1/4 of a skein of yarn, which means she used 364 / 4 = 91 yards of yarn.
+
+Her grandma used 1/2 of a skein of yarn, which means she used 364 / 2 = 182 yards of yarn.
+
+So, altogether Mariah and her grandma used 91 + 182 = 273 yards of yarn.",49356.2,49356.2,233,,,,draft_only,False,273,"[""273""]",[],273,True,True

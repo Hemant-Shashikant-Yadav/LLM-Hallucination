@@ -21,7 +21,11 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 def _default_device() -> str:
     try:
         import torch
-        return "cuda" if torch.cuda.is_available() else "cpu"
+        if torch.cuda.is_available():
+            return "cuda"
+        if torch.backends.mps.is_available():
+            return "mps"
+        return "cpu"
     except Exception:
         return "cpu"
 
@@ -65,6 +69,41 @@ class FrameworkSettings(BaseSettings):
             "Safety threshold T_safe for semantic entropy. "
             "Queries with H_sem < T_safe bypass external verification."
         ),
+    )
+    t_safe_reasoning: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "T_safe for quantitative (reasoning) queries. Calibrated on the GSM8K dev "
+            "slice: llama2:7b drafts were mostly wrong even at H_sem = 0, so 0.0 sends "
+            "every quantitative query to Layer 3."
+        ),
+    )
+    triage_mode: Literal["semantic_entropy", "surrogate_probe"] = Field(
+        default="semantic_entropy",
+        description=(
+            "Layer 1 uncertainty signal. 'semantic_entropy' samples the generator "
+            "and clusters answers by meaning (Farquhar et al., 2024). "
+            "'surrogate_probe' uses the TinyLlama dual-head probe (needs trained weights)."
+        ),
+    )
+    se_num_samples: int = Field(
+        default=4,
+        ge=1,
+        le=10,
+        description="Extra stochastic samples drawn from the generator for semantic entropy.",
+    )
+    se_sample_temperature: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=2.0,
+        description="Sampling temperature for the semantic entropy samples.",
+    )
+    se_max_tokens: int = Field(
+        default=512,
+        ge=32,
+        description="Max tokens per semantic entropy sample.",
     )
     probe_model_name: str = Field(
         default="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
@@ -141,10 +180,24 @@ class FrameworkSettings(BaseSettings):
     # Layer 3: HalluClean Structured Reasoning
     # -------------------------------------------------------------------------
     halluclean_max_steps: int = Field(
-        default=8,
+        default=6,
         ge=1,
         le=20,
         description="Maximum number of plan steps in the execution graph.",
+    )
+    halluclean_reasoning_mode: Literal["program_vote", "plan_judge"] = Field(
+        default="program_vote",
+        description=(
+            "Layer 3 for quantitative queries. 'program_vote' = program-verified "
+            "self-consistency (PAL + PROVE); 'plan_judge' = LLM judge + refiner."
+        ),
+    )
+    halluclean_executor_mode: Literal["single_pass", "per_step"] = Field(
+        default="single_pass",
+        description=(
+            "'single_pass' executes the whole plan in one plan-guided call; "
+            "'per_step' runs one LLM call per plan node."
+        ),
     )
     halluclean_temperature: float = Field(
         default=0.1,

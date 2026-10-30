@@ -147,11 +147,14 @@ class SearchRetriever:
     def _ddg_search_sync(query: str, max_results: int) -> list[SearchResult]:
         """Synchronous DuckDuckGo search — called from executor."""
         try:
-            from duckduckgo_search import DDGS
+            try:
+                from ddgs import DDGS
+            except ImportError:  # legacy package name
+                from duckduckgo_search import DDGS
 
             results = []
             with DDGS() as ddgs:
-                for r in ddgs.text(query, max_results=max_results):
+                for r in ddgs.text(query, max_results=max_results) or []:
                     results.append(
                         SearchResult(
                             title=r.get("title", ""),
@@ -163,7 +166,7 @@ class SearchRetriever:
             return results
 
         except ImportError:
-            logger.error("duckduckgo-search not installed")
+            logger.error("ddgs not installed")
             return []
         except Exception as exc:
             logger.error("DuckDuckGo search error: {}", exc)

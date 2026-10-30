@@ -37,6 +37,27 @@ STEP DESCRIPTION: {description}
 
 Execute this step carefully and provide your reasoning and conclusion."""
 
+# Single-pass plan-guided execution: the whole plan is executed in one call so
+# every step sees the full context of the earlier steps.
+_SINGLE_PASS_SYSTEM = """You are a careful, precise problem solver. You follow a given 
+reasoning plan exactly, one step at a time.
+
+Rules:
+1. Execute every step of the plan in order. Label each one "Step N:".
+2. Write every calculation explicitly (e.g. "3 * 4 = 12") and double-check it.
+3. Use only facts given in the query or well-established knowledge.
+4. Do NOT skip steps or invent numbers that are not in the query.
+5. End with exactly one line in the form "Final answer: <answer>".
+   For numeric questions, <answer> is a single number with no units.
+"""
+
+_SINGLE_PASS_PROMPT = """QUERY: {query}
+
+PLAN:
+{plan}
+
+Execute the plan step by step, then give the final answer line."""
+
 
 class HalluCleanExecutor:
     """
@@ -63,6 +84,9 @@ class HalluCleanExecutor:
         Returns:
             Tuple of (updated graph, reasoning traces).
         """
+        if settings.halluclean_executor_mode == "single_pass":
+            return await self._execute_single_pass(graph)
+
         reasoning_traces: list[str] = []
         step_outputs: dict[int, str] = {}
 
@@ -114,6 +138,38 @@ class HalluCleanExecutor:
         )
 
         return graph, reasoning_traces
+
+    async def _execute_single_pass(
+        self,
+        graph: ExecutionGraph,
+    ) -> tuple[ExecutionGraph, list[str]]:
+        """Execute the full plan in one plan-guided call."""
+        order = self._topological_sort(graph.steps)
+        by_id = {s.step_id: s for s in graph.steps}
+        plan_text = "\n".join(
+            f"{n}. {by_id[sid].description}" for n, sid in enumerate(order, start=1)
+        )
+
+        try:
+            result = await self._client.generate(
+                prompt=_SINGLE_PASS_PROMPT.format(query=graph.query, plan=plan_text),
+                system=_SINGLE_PASS_SYSTEM,
+                temperature=settings.halluclean_temperature,
+                max_tokens=1536,
+            )
+            output = result.text.strip()
+            for step in graph.steps:
+                step.status = "completed"
+            if graph.steps:
+                graph.steps[-1].output = output
+        except Exception as exc:
+            logger.error("Single-pass execution failed: {}", exc)
+            for step in graph.steps:
+                step.status = "failed"
+            output = f"[Error: {exc}]"
+
+        logger.info("Plan execution complete (single pass) | steps={}", len(graph.steps))
+        return graph, [output]
 
     async def _execute_step(
         self,

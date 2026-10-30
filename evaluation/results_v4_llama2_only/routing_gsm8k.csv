@@ -1,0 +1,4 @@
+triage_decision,n,framework_acc,baseline_acc,changed,mean_entropy
+knowledge_uncertain,1,1.0,1.0,1.0,0.418
+reasoning_uncertain,98,0.316,0.235,0.561,0.593
+safe,1,0.0,0.0,0.0,0.0

@@ -1,36 +1,39 @@
 """
-M.Tech Thesis Benchmark Runner — Three-Configuration Evaluation.
+M.Tech Thesis Benchmark Runner — Paired Multi-Configuration Evaluation.
 
-Evaluates the Defense-in-Depth framework across three configurations:
-  1. Baseline (Raw LLM):  POST /api/v1/query/layer1
-  2. Naive RAG:           POST /api/v1/query/layer2
-  3. Full Framework:      POST /api/v1/query
+Configurations:
+  baseline           Raw generator (llama2:7b). Taken from the SAME greedy draft the
+                     framework produces, so baseline and framework are exactly paired.
+  full_framework     POST /api/v1/query          (Layer 1 triage → Layer 2 / Layer 3)
+  naive_rag          POST /api/v1/query/layer2   (always run Layer 2)          [optional]
+  reference_verifier POST /api/v1/query/layer1 with the verifier model (llama3.1:8b)
+                     — the raw verifier model on its own, as an upper reference [optional]
 
 Datasets:
-  - TruthfulQA (30 validation samples, generation split)
-  - GSM8K      (30 test samples, main split)
+  TruthfulQA (generation, validation) — scored by an independent LLM judge + ROUGE-L acc
+  GSM8K      (main, test)             — strict final-answer match
 
-Produces:
-  - evaluation/results_truthfulqa.csv
-  - evaluation/results_gsm8k.csv
-  - LaTeX comparison table printed to stdout
+Usage:
+  python -m evaluation.benchmark_runner --n 100 --out-dir evaluation/results_v4
+  python -m evaluation.benchmark_runner --judge-only --out-dir evaluation/results_v4
 """
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
-import re
 import sys
 import time
 from pathlib import Path
 from typing import Any
 
 import httpx
+import numpy as np
 import pandas as pd
 from loguru import logger
 
-# ── Logging Setup ────────────────────────────────────────────────────────────
+from app.answer_utils import extract_final_number, normalize_number
 
 logger.remove()
 logger.add(
@@ -48,161 +51,123 @@ logger.add(
 # ── Constants ────────────────────────────────────────────────────────────────
 
 API_BASE = "http://localhost:8000"
-N_SAMPLES = 30
-REQUEST_TIMEOUT = 1200.0  # 20 minutes — generous for cold Ollama models
-OUTPUT_DIR = Path(__file__).resolve().parent
-CONCURRENCY = 1  # Sequential to avoid overwhelming local Ollama
+REQUEST_TIMEOUT = 1800.0
+GENERATOR_MODEL = "llama2:7b"
+VERIFIER_MODEL = "llama3.1:8b"
+DEFAULT_OUT_DIR = Path(__file__).resolve().parent / "results_v4"
+
+CONFIG_ENDPOINTS = {
+    "full_framework": ("/api/v1/query", GENERATOR_MODEL),
+    "naive_rag": ("/api/v1/query/layer2", GENERATOR_MODEL),
+    "reference_verifier": ("/api/v1/query/layer1", VERIFIER_MODEL),
+    "baseline": ("/api/v1/query/layer1", GENERATOR_MODEL),  # only used if not paired
+}
+CONFIG_ORDER = ["baseline", "naive_rag", "full_framework", "reference_verifier"]
+DISPLAY_NAMES = {
+    "baseline": "Raw LLM (llama2:7b)",
+    "naive_rag": "Naive RAG (always Layer 2)",
+    "full_framework": "Defense-in-Depth (Proposed)",
+    "reference_verifier": "Raw verifier (llama3.1:8b)",
+}
 
 
 # ── Dataset Loaders ──────────────────────────────────────────────────────────
 
 
-def load_truthfulqa(n: int = N_SAMPLES) -> list[dict[str, Any]]:
-    """Load *n* validation samples from truthfulqa/truthful_qa (generation)."""
+def load_truthfulqa(n: int, offset: int = 0) -> list[dict[str, Any]]:
     from datasets import load_dataset
 
-    logger.info("Loading TruthfulQA (generation split, n={})…", n)
     ds = load_dataset("truthfulqa/truthful_qa", "generation", split="validation")
     samples = []
-    for i, row in enumerate(ds):
-        if i >= n:
-            break
-        # Collect ALL correct answers for flexible matching
-        correct_answers: list[str] = []
-        if row.get("best_answer"):
-            correct_answers.append(row["best_answer"])
-        if row.get("correct_answers"):
-            correct_answers.extend(row["correct_answers"])
+    for i in range(offset, min(offset + n, len(ds))):
+        row = ds[i]
+        correct = [row["best_answer"], *row["correct_answers"]]
         samples.append({
             "id": f"tqa_{i}",
             "prompt": row["question"],
-            "correct_answers": correct_answers,
+            "correct_answers": list(dict.fromkeys(c for c in correct if c)),
+            "incorrect_answers": list(row["incorrect_answers"]),
             "category": row.get("category", ""),
         })
     logger.info("Loaded {} TruthfulQA samples", len(samples))
     return samples
 
 
-def load_gsm8k(n: int = N_SAMPLES) -> list[dict[str, Any]]:
-    """Load *n* test samples from gsm8k (main split)."""
+def load_gsm8k(n: int, offset: int = 0) -> list[dict[str, Any]]:
     from datasets import load_dataset
 
-    logger.info("Loading GSM8K (main split, n={})…", n)
-    try:
-        ds = load_dataset("openai/gsm8k", "main", split="test")
-    except Exception:
-        ds = load_dataset("gsm8k", "main", split="test")
+    ds = load_dataset("openai/gsm8k", "main", split="test")
     samples = []
-    for i, row in enumerate(ds):
-        if i >= n:
-            break
-        # Extract the numerical answer from the #### delimiter
-        answer_text = row.get("answer", "")
-        numerical = ""
-        if "####" in answer_text:
-            numerical = answer_text.split("####")[-1].strip()
-            # Normalise: remove commas, dollar signs, spaces
-            numerical = numerical.replace(",", "").replace("$", "").strip()
+    for i in range(offset, min(offset + n, len(ds))):
+        row = ds[i]
+        gold = normalize_number(row["answer"].split("####")[-1].strip())
         samples.append({
             "id": f"gsm_{i}",
             "prompt": row["question"],
-            "correct_answers": [numerical] if numerical else [],
-            "numerical_answer": numerical,
+            "correct_answers": [gold] if gold else [],
+            "numerical_answer": gold or "",
         })
     logger.info("Loaded {} GSM8K samples", len(samples))
     return samples
 
 
-# ── Accuracy Evaluators ──────────────────────────────────────────────────────
-
-_NUM_RE = re.compile(r"-?\d[\d,]*\.?\d*")
-
-
-def eval_truthfulqa(answer: str, correct_answers: list[str]) -> bool:
-    """
-    TruthfulQA accuracy: token overlap or substring match.
-
-    Returns True if any correct answer appears as a substring (case-insensitive)
-    in the model's response, or if there is a high token overlap heuristic
-    (to handle cases like "placental tissue" vs "placenta").
-    """
-    if not correct_answers:
-        return False
-    ans_lower = answer.lower()
-    
-    # Extract tokens for heuristic
-    ans_tokens = set(re.findall(r'\b\w+\b', ans_lower))
-
-    for ca in correct_answers:
-        ca_lower = ca.lower().strip()
-        if not ca_lower:
-            continue
-            
-        if ca_lower in ans_lower:
-            return True
-            
-        # Token overlap heuristic
-        ca_tokens = set(re.findall(r'\b\w+\b', ca_lower))
-        if ca_tokens:
-            overlap = len(ca_tokens.intersection(ans_tokens)) / len(ca_tokens)
-            if overlap >= 0.5:
-                return True
-                
-    return False
+# ── Scoring ──────────────────────────────────────────────────────────────────
 
 
 def eval_gsm8k(answer: str, numerical_answer: str) -> bool:
-    """
-    GSM8K accuracy: check if the numerical ground truth appears in the
-    generated answer (after stripping commas/dollars).
-    """
+    """Strict: the extracted final number must equal the gold answer."""
     if not numerical_answer:
         return False
-    # Normalise the answer text
-    normalised = answer.replace(",", "").replace("$", "")
-    return numerical_answer in normalised
+    return extract_final_number(answer) == numerical_answer
+
+
+def eval_gsm8k_legacy(answer: str, numerical_answer: str) -> bool:
+    """Previous (lenient) metric: gold number appears anywhere as a substring."""
+    return bool(numerical_answer) and numerical_answer in answer.replace(",", "").replace("$", "")
 
 
 # ── API Client ───────────────────────────────────────────────────────────────
 
 
 async def query_api(
-    client: httpx.AsyncClient,
-    prompt: str,
-    endpoint: str,
+    client: httpx.AsyncClient, prompt: str, endpoint: str, model: str
 ) -> dict[str, Any]:
-    """
-    POST a query to the framework and return the JSON response.
-
-    Returns a safe fallback dict on any error.
-    """
-    body = {
-        "prompt": prompt,
-        "model": "llama2:7b",
-        "include_audit": True,
-    }
-    try:
-        resp = await client.post(f"{API_BASE}{endpoint}", json=body)
-        resp.raise_for_status()
-        return resp.json()
-    except Exception as exc:
-        logger.warning("API {} failed: {}", endpoint, exc)
-        return {"answer": "[ERROR]", "pipeline_result": None}
+    body = {"prompt": prompt, "model": model, "include_audit": True}
+    for attempt in range(2):
+        try:
+            resp = await client.post(f"{API_BASE}{endpoint}", json=body)
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            logger.warning("API {} failed (attempt {}): {}", endpoint, attempt + 1, exc)
+            await asyncio.sleep(5)
+    return {"answer": "[ERROR]", "pipeline_result": None}
 
 
-def _extract_fields(resp: dict[str, Any]) -> dict[str, Any]:
-    """Extract auditing fields from a framework response."""
-    pr = resp.get("pipeline_result") or {}
+def _row(
+    dataset: str, sample: dict[str, Any], config: str, answer: str, pr: dict[str, Any],
+    wall_ms: float, tokens: int,
+) -> dict[str, Any]:
     triage = pr.get("triage_result") or {}
     ec = triage.get("error_classification") or {}
     return {
-        "answer": resp.get("answer", ""),
-        "total_latency_ms": pr.get("total_latency_ms", 0.0),
-        "tokens_generated": pr.get("tokens_generated", 0),
+        "dataset": dataset,
+        "sample_id": sample["id"],
+        "prompt": sample["prompt"],
+        "config": config,
+        "answer": answer,
+        "total_latency_ms": round(pr.get("total_latency_ms", 0.0), 1),
+        "wall_latency_ms": round(wall_ms, 1),
+        "tokens_generated": tokens,
         "triage_decision": triage.get("decision", ""),
         "classified_error_type": ec.get("error_type", ""),
-        "semantic_entropy": triage.get("semantic_entropy", 0.0),
+        "semantic_entropy": triage.get("semantic_entropy", np.nan),
         "layers_invoked": pr.get("layers_invoked", ""),
+        "answer_changed": pr.get("layer_answer_changed", False),
+        "reference_answer": (sample["correct_answers"] or [""])[0],
+        "correct_answers": json.dumps(sample["correct_answers"]),
+        "incorrect_answers": json.dumps(sample.get("incorrect_answers", [])),
+        "numerical_answer": sample.get("numerical_answer", ""),
     }
 
 
@@ -210,219 +175,275 @@ def _extract_fields(resp: dict[str, Any]) -> dict[str, Any]:
 
 
 async def benchmark_dataset(
-    dataset_name: str,
+    dataset: str,
     samples: list[dict[str, Any]],
-    evaluator,
+    configs: list[str],
+    csv_path: Path,
 ) -> pd.DataFrame:
-    """
-    Run all three configurations for every sample and return a DataFrame.
+    done: set[tuple[str, str]] = set()
+    if csv_path.exists():
+        prev = pd.read_csv(csv_path)
+        done = set(zip(prev["sample_id"], prev["config"]))
+        logger.info("Resuming {} — {} rows already present", dataset, len(prev))
 
-    Configurations:
-      1. baseline   → /api/v1/query/layer1
-      2. naive_rag  → /api/v1/query/layer2
-      3. full_framework → /api/v1/query
-    """
-    configs = [
-        ("baseline", "/api/v1/query/layer1"),
-        ("naive_rag", "/api/v1/query/layer2"),
-        ("full_framework", "/api/v1/query"),
-    ]
-
-    rows: list[dict[str, Any]] = []
+    paired_baseline = "baseline" in configs and "full_framework" in configs
 
     async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
         for idx, sample in enumerate(samples):
-            prompt = sample["prompt"]
-            correct = sample["correct_answers"]
-            logger.info(
-                "[{}/{}] {}: {:.60}…",
-                idx + 1,
-                len(samples),
-                dataset_name,
-                prompt,
-            )
+            rows: list[dict[str, Any]] = []
+            logger.info("[{}/{}] {}: {:.70}", idx + 1, len(samples), dataset, sample["prompt"])
 
-            for config_name, endpoint in configs:
+            for config in configs:
+                if (sample["id"], config) in done:
+                    continue
+                if config == "baseline" and paired_baseline:
+                    continue  # filled from the framework draft below
+
+                endpoint, model = CONFIG_ENDPOINTS[config]
                 t0 = time.perf_counter()
-                resp = await query_api(client, prompt, endpoint)
+                resp = await query_api(client, sample["prompt"], endpoint, model)
                 wall_ms = (time.perf_counter() - t0) * 1000
+                pr = resp.get("pipeline_result") or {}
 
-                fields = _extract_fields(resp)
-                answer_text = fields["answer"]
+                rows.append(_row(
+                    dataset, sample, config, resp.get("answer", ""), pr,
+                    wall_ms, pr.get("tokens_generated", 0),
+                ))
 
-                # Evaluate accuracy
-                if dataset_name == "gsm8k":
-                    correct_flag = evaluator(
-                        answer_text, sample.get("numerical_answer", "")
-                    )
-                else:
-                    correct_flag = evaluator(answer_text, correct)
+                if config == "full_framework" and paired_baseline and (
+                    sample["id"], "baseline") not in done:
+                    triage = pr.get("triage_result") or {}
+                    draft = triage.get("draft_response", "[ERROR]")
+                    rows.append(_row(
+                        dataset, sample, "baseline", draft,
+                        {"total_latency_ms": pr.get("draft_latency_ms", 0.0),
+                         "layers_invoked": "draft_only"},
+                        pr.get("draft_latency_ms", 0.0), pr.get("draft_tokens", 0),
+                    ))
 
-                rows.append({
-                    "dataset": dataset_name,
-                    "sample_id": sample["id"],
-                    "prompt": prompt[:200],
-                    "config": config_name,
-                    "answer": answer_text[:500],
-                    "is_correct": correct_flag,
-                    "total_latency_ms": fields["total_latency_ms"],
-                    "wall_latency_ms": round(wall_ms, 2),
-                    "tokens_generated": fields["tokens_generated"],
-                    "triage_decision": fields["triage_decision"],
-                    "classified_error_type": fields["classified_error_type"],
-                    "semantic_entropy": fields["semantic_entropy"],
-                    "layers_invoked": fields["layers_invoked"],
-                    "reference_answer": (
-                        correct[0][:200] if correct else ""
-                    ),
-                })
+            if rows:
+                pd.DataFrame(rows).to_csv(
+                    csv_path, mode="a", header=not csv_path.exists(), index=False
+                )
 
-            # Brief pause between samples
-            await asyncio.sleep(0.3)
+    return pd.read_csv(csv_path)
 
+
+# ── Scoring passes ───────────────────────────────────────────────────────────
+
+
+def score_gsm8k(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    gold = df["numerical_answer"].astype(str).str.replace(r"\.0$", "", regex=True)
+    df["is_correct"] = [eval_gsm8k(str(a), g) for a, g in zip(df["answer"], gold)]
+    df["is_correct_legacy"] = [eval_gsm8k_legacy(str(a), g) for a, g in zip(df["answer"], gold)]
+    return df
+
+
+async def score_truthfulqa(df: pd.DataFrame, judge_model: str) -> pd.DataFrame:
+    from ollama import AsyncClient
+
+    from evaluation.truthfulqa_judge import judge_answer, rouge_acc
+
+    df = df.copy()
+    for col in ("judge_truthful", "judge_informative", "judge_reason"):
+        if col not in df.columns:
+            df[col] = None
+    client = AsyncClient(timeout=600)
+
+    todo = df.index[df["judge_truthful"].isna()].tolist()
+    logger.info("Judging {} TruthfulQA answers with {}", len(todo), judge_model)
+    for n, i in enumerate(todo, start=1):
+        row = df.loc[i]
+        verdict = await judge_answer(
+            client, row["prompt"], str(row["answer"]),
+            json.loads(row["correct_answers"]), json.loads(row["incorrect_answers"]),
+            model=judge_model,
+        )
+        df.at[i, "judge_truthful"] = verdict["truthful"]
+        df.at[i, "judge_informative"] = verdict["informative"]
+        df.at[i, "judge_reason"] = verdict["reason"]
+        if n % 20 == 0:
+            logger.info("  judged {}/{}", n, len(todo))
+
+    df["judge_truthful"] = df["judge_truthful"].astype(bool)
+    df["judge_informative"] = df["judge_informative"].astype(bool)
+    df["truthful_informative"] = df["judge_truthful"] & df["judge_informative"]
+    df["rouge_acc"] = [
+        rouge_acc(str(a), json.loads(c), json.loads(ic))
+        for a, c, ic in zip(df["answer"], df["correct_answers"], df["incorrect_answers"])
+    ]
+    df["is_correct"] = df["judge_truthful"]
+    return df
+
+
+# ── Statistics & Reporting ───────────────────────────────────────────────────
+
+
+def bootstrap_ci(values: np.ndarray, n_boot: int = 5000, seed: int = 0) -> tuple[float, float]:
+    rng = np.random.default_rng(seed)
+    if len(values) == 0:
+        return (np.nan, np.nan)
+    means = rng.choice(values, size=(n_boot, len(values)), replace=True).mean(axis=1)
+    return float(np.percentile(means, 2.5)), float(np.percentile(means, 97.5))
+
+
+def mcnemar_p(a: np.ndarray, b: np.ndarray) -> float:
+    """Exact McNemar test on paired binary outcomes."""
+    from scipy.stats import binomtest
+
+    b_only = int(np.sum(~a & b))
+    a_only = int(np.sum(a & ~b))
+    if a_only + b_only == 0:
+        return 1.0
+    return float(binomtest(b_only, a_only + b_only, 0.5).pvalue)
+
+
+def build_summary(df: pd.DataFrame, dataset: str, metric_cols: list[str]) -> pd.DataFrame:
+    rows = []
+    base = df[df["config"] == "baseline"].set_index("sample_id")
+    for config in [c for c in CONFIG_ORDER if c in df["config"].unique()]:
+        sub = df[df["config"] == config].set_index("sample_id")
+        row: dict[str, Any] = {"dataset": dataset, "config": config, "n": len(sub)}
+        for m in metric_cols:
+            vals = sub[m].astype(bool).to_numpy()
+            lo, hi = bootstrap_ci(vals.astype(float))
+            row[f"{m}_pct"] = round(100 * vals.mean(), 2)
+            row[f"{m}_ci95"] = f"[{100 * lo:.1f}, {100 * hi:.1f}]"
+            if config != "baseline" and len(base):
+                common = sub.index.intersection(base.index)
+                row[f"{m}_delta_vs_baseline"] = round(
+                    100 * (sub.loc[common, m].astype(bool).mean()
+                           - base.loc[common, m].astype(bool).mean()), 2)
+                row[f"{m}_mcnemar_p"] = round(mcnemar_p(
+                    base.loc[common, m].astype(bool).to_numpy(),
+                    sub.loc[common, m].astype(bool).to_numpy()), 4)
+        row["avg_latency_s"] = round(sub["wall_latency_ms"].mean() / 1000, 2)
+        row["avg_tokens"] = round(sub["tokens_generated"].mean(), 1)
+        rows.append(row)
     return pd.DataFrame(rows)
 
 
-# ── Summary Table Builder ────────────────────────────────────────────────────
-
-
-def build_summary(df: pd.DataFrame, dataset_name: str) -> pd.DataFrame:
-    """
-    Aggregate per-config summary from the raw results DataFrame.
-
-    Columns: Config | Accuracy(%) | Avg Latency(ms) | Avg Tokens
-    """
-    agg = (
-        df.groupby("config")
+def routing_breakdown(df: pd.DataFrame) -> pd.DataFrame:
+    fw = df[df["config"] == "full_framework"].set_index("sample_id")
+    base = df[df["config"] == "baseline"].set_index("sample_id")
+    fw = fw.assign(baseline_correct=base["is_correct"].reindex(fw.index).astype(bool))
+    return (
+        fw.groupby("triage_decision")
         .agg(
-            accuracy=("is_correct", "mean"),
-            avg_latency_ms=("wall_latency_ms", "mean"),
-            avg_tokens=("tokens_generated", "mean"),
-            n_samples=("sample_id", "count"),
+            n=("is_correct", "size"),
+            framework_acc=("is_correct", "mean"),
+            baseline_acc=("baseline_correct", "mean"),
+            changed=("answer_changed", "mean"),
+            mean_entropy=("semantic_entropy", "mean"),
         )
+        .round(3)
         .reset_index()
     )
-    agg["accuracy_pct"] = (agg["accuracy"] * 100).round(2)
-    agg["avg_latency_ms"] = agg["avg_latency_ms"].round(1)
-    agg["avg_tokens"] = agg["avg_tokens"].round(1)
-    agg["dataset"] = dataset_name
-
-    # Ensure ordering: baseline → naive_rag → full_framework
-    order = {"baseline": 0, "naive_rag": 1, "full_framework": 2}
-    agg["_order"] = agg["config"].map(order)
-    agg = agg.sort_values("_order").drop(columns="_order").reset_index(drop=True)
-
-    return agg
 
 
-def print_latex(summary: pd.DataFrame, dataset_name: str) -> str:
-    """Print a LaTeX booktabs table to stdout and return the string."""
-    display_names = {
-        "baseline": "Raw LLM (Baseline)",
-        "naive_rag": "Naive RAG (Layer 2)",
-        "full_framework": "Defense-in-Depth (Proposed)",
-    }
-    tbl = summary[["config", "accuracy_pct", "avg_latency_ms", "avg_tokens"]].copy()
-    tbl["config"] = tbl["config"].map(display_names)
-    tbl.columns = ["Configuration", "Accuracy (%)", "Avg Latency (ms)", "Avg Tokens"]
-
+def print_latex(summary: pd.DataFrame, dataset: str, metric: str) -> str:
+    tbl = summary[["config", f"{metric}_pct", f"{metric}_ci95", "avg_latency_s", "avg_tokens"]].copy()
+    tbl["config"] = tbl["config"].map(DISPLAY_NAMES)
+    tbl.columns = ["Configuration", "Accuracy (%)", "95% CI", "Avg Latency (s)", "Avg Tokens"]
     latex = tbl.to_latex(
         index=False,
-        caption=f"Benchmark Results on {dataset_name} (N={int(summary['n_samples'].iloc[0])})",
-        label=f"tab:{dataset_name.lower().replace(' ', '_')}_benchmark",
-        column_format="lccc",
+        caption=f"Benchmark Results on {dataset} (N={int(summary['n'].iloc[0])})",
+        label=f"tab:{dataset.lower()}_benchmark",
+        column_format="lcccc",
         escape=False,
     )
-    print("\n" + "=" * 72)
-    print(f"  LaTeX Table — {dataset_name}")
-    print("=" * 72)
     print(latex)
     return latex
+
+
+def report(out_dir: Path) -> None:
+    sections = []
+    for name, metrics in [("truthfulqa", ["judge_truthful", "truthful_informative", "rouge_acc"]),
+                          ("gsm8k", ["is_correct", "is_correct_legacy"])]:
+        path = out_dir / f"results_{name}.csv"
+        if not path.exists():
+            continue
+        df = pd.read_csv(path)
+        if not set(metrics).issubset(df.columns):
+            logger.warning("{} is not scored yet — skipping report", path)
+            continue
+        summary = build_summary(df, name, metrics)
+        summary.to_csv(out_dir / f"summary_{name}.csv", index=False)
+        print("\n" + "=" * 80 + f"\n  {name.upper()} summary\n" + "=" * 80)
+        print(summary.T.to_string(header=False))
+        if "full_framework" in df["config"].values and "baseline" in df["config"].values:
+            rb = routing_breakdown(df)
+            print("\nRouting breakdown (full_framework):")
+            print(rb.to_string(index=False))
+            rb.to_csv(out_dir / f"routing_{name}.csv", index=False)
+        sections.append(print_latex(summary, name, metrics[0]))
+    (out_dir / "latex_tables.tex").write_text("\n".join(sections))
 
 
 # ── Main Entry ───────────────────────────────────────────────────────────────
 
 
-async def run() -> None:
-    """Full benchmark pipeline: load → query → evaluate → report."""
+async def run(args: argparse.Namespace) -> None:
+    global API_BASE
+    API_BASE = args.api_base
+    if args.generator:
+        for k, (ep, model) in CONFIG_ENDPOINTS.items():
+            if model == GENERATOR_MODEL:
+                CONFIG_ENDPOINTS[k] = (ep, args.generator)
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    # 0. Health check
-    logger.info("Pre-flight: checking API health…")
-    try:
+    if not args.judge_only:
         async with httpx.AsyncClient(timeout=10) as hc:
-            r = await hc.get(f"{API_BASE}/api/v1/health")
-            r.raise_for_status()
-            logger.info("API healthy: {}", r.json().get("status"))
-    except Exception as exc:
-        logger.error(
-            "API not reachable at {} — is the server running? Error: {}",
-            API_BASE,
-            exc,
-        )
-        sys.exit(1)
+            try:
+                r = await hc.get(f"{API_BASE}/api/v1/health")
+                r.raise_for_status()
+                logger.info("API healthy: {}", r.json().get("config"))
+            except Exception as exc:
+                logger.error("API not reachable at {}: {}", API_BASE, exc)
+                sys.exit(1)
 
-    all_summaries: list[pd.DataFrame] = []
+        for name in args.datasets:
+            loader = load_truthfulqa if name == "truthfulqa" else load_gsm8k
+            samples = loader(args.n, args.offset)
+            await benchmark_dataset(name, samples, args.configs, out_dir / f"results_{name}.csv")
 
-    # ── TruthfulQA ───────────────────────────────────────────────────────
-    tqa_csv_path = OUTPUT_DIR / "results_truthfulqa.csv"
-    if tqa_csv_path.exists() and tqa_csv_path.stat().st_size > 1000:
-        logger.info("TruthfulQA results already exist at {} — loading existing data", tqa_csv_path)
-        df_tqa = pd.read_csv(tqa_csv_path)
-        summary_tqa = build_summary(df_tqa, "TruthfulQA")
-        all_summaries.append(summary_tqa)
-        print_latex(summary_tqa, "TruthfulQA")
-    else:
-        try:
-            tqa_samples = load_truthfulqa(N_SAMPLES)
-        except Exception as exc:
-            logger.error("Failed to load TruthfulQA: {}", exc)
-            tqa_samples = []
+    if args.skip_scoring:
+        return
 
-        if tqa_samples:
-            logger.info("▶ Starting TruthfulQA benchmark ({} samples)…", len(tqa_samples))
-            df_tqa = await benchmark_dataset("truthfulqa", tqa_samples, eval_truthfulqa)
-            df_tqa.to_csv(tqa_csv_path, index=False)
-            logger.info("Saved → {}", tqa_csv_path)
+    gsm_path = out_dir / "results_gsm8k.csv"
+    if gsm_path.exists():
+        score_gsm8k(pd.read_csv(gsm_path)).to_csv(gsm_path, index=False)
 
-            summary_tqa = build_summary(df_tqa, "TruthfulQA")
-            all_summaries.append(summary_tqa)
-            print_latex(summary_tqa, "TruthfulQA")
+    tqa_path = out_dir / "results_truthfulqa.csv"
+    if tqa_path.exists():
+        df = await score_truthfulqa(pd.read_csv(tqa_path), args.judge_model)
+        df.to_csv(tqa_path, index=False)
 
-    # ── GSM8K ────────────────────────────────────────────────────────────
-    try:
-        gsm_samples = load_gsm8k(N_SAMPLES)
-    except Exception as exc:
-        logger.error("Failed to load GSM8K: {}", exc)
-        gsm_samples = []
+    report(out_dir)
+    logger.info("✅ Benchmark complete → {}", out_dir)
 
-    if gsm_samples:
-        logger.info("▶ Starting GSM8K benchmark ({} samples)…", len(gsm_samples))
-        df_gsm = await benchmark_dataset("gsm8k", gsm_samples, eval_gsm8k)
-        csv_path = OUTPUT_DIR / "results_gsm8k.csv"
-        df_gsm.to_csv(csv_path, index=False)
-        logger.info("Saved → {}", csv_path)
 
-        summary_gsm = build_summary(df_gsm, "GSM8K")
-        all_summaries.append(summary_gsm)
-        print_latex(summary_gsm, "GSM8K")
-
-    # ── Combined Table ───────────────────────────────────────────────────
-    if all_summaries:
-        combined = pd.concat(all_summaries, ignore_index=True)
-        print("\n" + "=" * 72)
-        print("  Combined Summary")
-        print("=" * 72)
-        print(
-            combined[
-                ["dataset", "config", "accuracy_pct", "avg_latency_ms", "avg_tokens"]
-            ].to_string(index=False)
-        )
-
-    logger.info("✅ All benchmarks complete.")
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--n", type=int, default=100, help="Samples per dataset")
+    ap.add_argument("--offset", type=int, default=0, help="Start index in each dataset")
+    ap.add_argument("--datasets", nargs="+", default=["gsm8k", "truthfulqa"],
+                    choices=["gsm8k", "truthfulqa"])
+    ap.add_argument("--configs", nargs="+", default=["baseline", "full_framework"],
+                    choices=list(CONFIG_ENDPOINTS))
+    ap.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR))
+    ap.add_argument("--judge-model", default="qwen2.5:7b")
+    ap.add_argument("--api-base", default=API_BASE, help="Framework server URL")
+    ap.add_argument("--generator", default=None, help="Override generator model for all configs")
+    ap.add_argument("--judge-only", action="store_true", help="Only score + report existing CSVs")
+    ap.add_argument("--skip-scoring", action="store_true", help="Only generate answers")
+    return ap.parse_args(argv)
 
 
 def main() -> None:
-    asyncio.run(run())
+    asyncio.run(run(parse_args()))
 
 
 if __name__ == "__main__":

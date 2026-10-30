@@ -119,6 +119,10 @@ class PropositionParser:
             else:
                 return self._fallback_sentence_split(source_text)
 
+        # JSON mode often wraps the array: {"propositions": [...]}
+        if isinstance(parsed, dict):
+            parsed = next((v for v in parsed.values() if isinstance(v, list)), None)
+
         if not isinstance(parsed, list):
             return self._fallback_sentence_split(source_text)
 

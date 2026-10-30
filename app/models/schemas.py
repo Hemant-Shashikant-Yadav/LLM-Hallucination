@@ -362,7 +362,17 @@ class PipelineResult(BaseModel):
     layer3_result: Layer3Result | None = None
     final_answer: str
     total_latency_ms: float = Field(ge=0.0)
-    tokens_generated: int = Field(default=0, ge=0)
+    tokens_generated: int = Field(
+        default=0,
+        ge=0,
+        description="Total tokens (prompt + completion) across ALL LLM calls for this query",
+    )
+    draft_tokens: int = Field(default=0, ge=0, description="Tokens of the draft call only")
+    draft_latency_ms: float = Field(default=0.0, ge=0.0, description="Draft generation latency")
+    layer_answer_changed: bool = Field(
+        default=False,
+        description="True when Layer 2/3 replaced the draft with a different answer",
+    )
     timestamp: float = Field(default_factory=time.time)
 
 

@@ -119,6 +119,9 @@ async def health_check() -> dict:
         "version": "0.1.0",
         "config": {
             "t_safe": settings.t_safe,
+            "triage_mode": settings.triage_mode,
+            "se_num_samples": settings.se_num_samples,
+            "judge_model": settings.ollama_judge_model,
             "nli_confidence_threshold": settings.nli_confidence_threshold,
             "ollama_model": settings.ollama_model,
             "probe_model": settings.probe_model_name,

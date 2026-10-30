@@ -1,0 +1,25 @@
+\begin{table}
+\caption{Benchmark Results on truthfulqa (N=100)}
+\label{tab:truthfulqa_benchmark}
+\begin{tabular}{lcccc}
+\toprule
+Configuration & Accuracy (%) & 95% CI & Avg Latency (s) & Avg Tokens \\
+\midrule
+Raw LLM (llama2:7b) & 61.000000 & [51.0, 70.0] & 25.350000 & 333.700000 \\
+Defense-in-Depth (Proposed) & 79.000000 & [71.0, 87.0] & 158.610000 & 5342.900000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}
+\caption{Benchmark Results on gsm8k (N=100)}
+\label{tab:gsm8k_benchmark}
+\begin{tabular}{lcccc}
+\toprule
+Configuration & Accuracy (%) & 95% CI & Avg Latency (s) & Avg Tokens \\
+\midrule
+Raw LLM (llama2:7b) & 24.000000 & [16.0, 33.0] & 22.510000 & 272.000000 \\
+Defense-in-Depth (Proposed) & 32.000000 & [23.0, 41.0] & 115.980000 & 3709.000000 \\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -17,6 +17,7 @@ import time
 
 from loguru import logger
 
+from app.answer_utils import extract_final_number, is_numeric_reasoning_query
 from app.config import settings
 from app.llm_clients.ollama_client import OllamaClient
 from app.models.schemas import (
@@ -30,31 +31,30 @@ from app.models.schemas import (
 # Stage 3: Judgment Prompts
 # =============================================================================
 
-_JUDGE_SYSTEM = """You are a rigorous logical consistency judge. Your task is to evaluate 
-whether a multi-step reasoning process produced a logically sound conclusion.
+_JUDGE_SYSTEM = """You are a rigorous verifier of step-by-step solutions.
 
 You must check:
-1. Does each step follow logically from its predecessors?
-2. Are there any contradictions between steps?
-3. Does the final conclusion accurately reflect the reasoning chain?
-4. Are there any unsupported claims or logical leaps?
+1. Recompute EVERY arithmetic operation. Any wrong result is a violation.
+2. Check that every quantity used is actually stated in the query.
+3. Check that the solution answers exactly what the query asks (units, totals, remaining amounts).
+4. Check that the final answer follows from the steps.
 
 Respond with a JSON object:
-{{
+{
     "is_consistent": true/false,
     "confidence": 0.0-1.0,
     "violations": ["description of violation 1", ...]
-}}
+}
+Report only real errors. If the solution is correct, return "is_consistent": true and an empty list.
 """
 
-_JUDGE_PROMPT = """Evaluate the logical consistency of the following reasoning chain.
+_JUDGE_PROMPT = """Verify the following solution.
 
 ORIGINAL QUERY: {query}
 
-REASONING CHAIN:
+SOLUTION:
 {reasoning_traces}
 
-Judge whether the reasoning is logically sound and identify any violations.
 Return ONLY the JSON evaluation."""
 
 
@@ -62,27 +62,24 @@ Return ONLY the JSON evaluation."""
 # Stage 4: Refinement Prompts
 # =============================================================================
 
-_REFINER_SYSTEM = """You are a precise content refiner. Your task is to rewrite a 
-verified reasoning chain into a clear, polished natural language response.
+_REFINER_SYSTEM = """You are a careful problem solver who corrects flawed solutions.
 
 Rules:
-1. Preserve all factual content from the verified reasoning.
-2. Remove meta-commentary about the reasoning process itself.
-3. Write in a natural, authoritative tone.
-4. If any violations were identified, address them in the refined response.
-5. Do NOT add any new information beyond what was verified.
+1. Fix every identified issue. Recompute all arithmetic explicitly.
+2. Use only quantities stated in the query.
+3. Show the corrected steps concisely, labelled "Step N:".
+4. End with exactly one line in the form "Final answer: <answer>".
+   For numeric questions, <answer> is a single number with no units.
 """
 
-_REFINER_PROMPT = """Rewrite the following verified reasoning into a polished response.
+_REFINER_PROMPT = """ORIGINAL QUERY: {query}
 
-ORIGINAL QUERY: {query}
-
-VERIFIED REASONING:
+FLAWED SOLUTION:
 {reasoning_traces}
 
 {violation_context}
 
-Write a clear, natural response that answers the original query."""
+Write the corrected solution, then the final answer line."""
 
 
 class HalluCleanJudge:
@@ -118,13 +115,13 @@ class HalluCleanJudge:
         # Stage 3: Judgment
         judgment = await self._judge(graph.query, reasoning_traces)
 
-        # Stage 4: Refinement
-        refined = await self._refine(
-            graph.query,
-            reasoning_traces,
-            judgment,
-            draft_response,
-        )
+        # Stage 4: Refinement (only when the judge found violations)
+        if judgment.is_consistent and not judgment.violations:
+            verified = "\n\n".join(reasoning_traces)
+        else:
+            verified = await self._refine(graph.query, reasoning_traces, judgment)
+
+        refined = self._select_final(graph.query, verified, draft_response)
 
         elapsed_ms = (time.perf_counter() - start) * 1000
 
@@ -202,30 +199,58 @@ class HalluCleanJudge:
                     confidence=0.5,
                 )
 
+        is_consistent = parsed.get("is_consistent", True)
+        if isinstance(is_consistent, str):
+            is_consistent = is_consistent.strip().lower() == "true"
+        try:
+            confidence = min(max(float(parsed.get("confidence", 0.5)), 0.0), 1.0)
+        except (TypeError, ValueError):
+            confidence = 0.5
+        violations = parsed.get("violations", []) or []
+        if not isinstance(violations, list):
+            violations = [violations]
         return JudgmentResult(
-            is_consistent=parsed.get("is_consistent", True),
-            confidence=float(parsed.get("confidence", 0.5)),
-            violations=parsed.get("violations", []),
+            is_consistent=bool(is_consistent),
+            confidence=confidence,
+            violations=[str(v) for v in violations if str(v).strip()],
         )
 
     # -------------------------------------------------------------------------
     # Stage 4: Content Refinement
     # -------------------------------------------------------------------------
 
+    @staticmethod
+    def _select_final(query: str, verified: str, draft_response: str) -> str:
+        """
+        Choose the final response.
+
+        For quantitative queries the draft is kept only if its final number
+        matches the verified chain (no degradation of correct drafts);
+        otherwise the verified chain wins. For other queries the verified
+        chain is returned.
+        """
+        if not verified.strip() or verified.startswith("[Error"):
+            return draft_response or verified
+        if draft_response and is_numeric_reasoning_query(query):
+            verified_ans = extract_final_number(verified)
+            draft_ans = extract_final_number(draft_response)
+            if verified_ans is not None and verified_ans == draft_ans:
+                logger.info("Verified chain agrees with draft ({}), keeping draft", draft_ans)
+                return draft_response
+            logger.info(
+                "Verified chain overrides draft | draft={} | verified={}",
+                draft_ans,
+                verified_ans,
+            )
+        return verified
+
     async def _refine(
         self,
         query: str,
         reasoning_traces: list[str],
         judgment: JudgmentResult,
-        draft_response: str = "",
     ) -> str:
-        """Rewrite the verified reasoning into polished natural language."""
-        # If the reasoning chain confirms there are no violations, 
-        # return the original draft response to avoid degrading correct answers.
-        if judgment.is_consistent and not judgment.violations and draft_response:
-            logger.info("Reasoning is consistent, returning original draft to prevent degradation")
-            return draft_response
-
+        """Correct the reasoning chain using the judge's violations."""
         traces_text = "\n\n".join(reasoning_traces)
 
         # Build violation context if any were found
@@ -247,8 +272,8 @@ class HalluCleanJudge:
                     violation_context=violation_context,
                 ),
                 system=_REFINER_SYSTEM,
-                temperature=0.1,
-                max_tokens=2048,
+                temperature=0.0,
+                max_tokens=1536,
             )
 
             return result.text.strip()

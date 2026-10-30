@@ -1,0 +1,27 @@
+\begin{table}
+\caption{Benchmark Results on truthfulqa (N=100)}
+\label{tab:truthfulqa_benchmark}
+\begin{tabular}{lcccc}
+\toprule
+Configuration & Accuracy (%) & 95% CI & Avg Latency (s) & Avg Tokens \\
+\midrule
+Raw LLM (llama2:7b) & 64.000000 & [54.0, 73.0] & 24.660000 & 338.100000 \\
+Defense-in-Depth (Proposed) & 73.000000 & [64.0, 81.0] & 171.160000 & 4668.600000 \\
+Raw verifier (llama3.1:8b) & 67.000000 & [58.0, 76.0] & 29.080000 & 336.100000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}
+\caption{Benchmark Results on gsm8k (N=100)}
+\label{tab:gsm8k_benchmark}
+\begin{tabular}{lcccc}
+\toprule
+Configuration & Accuracy (%) & 95% CI & Avg Latency (s) & Avg Tokens \\
+\midrule
+Raw LLM (llama2:7b) & 26.000000 & [18.0, 35.0] & 13.230000 & 270.500000 \\
+Defense-in-Depth (Proposed) & 71.000000 & [62.0, 80.0] & 107.000000 & 3625.100000 \\
+Raw verifier (llama3.1:8b) & 86.000000 & [79.0, 92.0] & 21.540000 & 323.900000 \\
+\bottomrule
+\end{tabular}
+\end{table}

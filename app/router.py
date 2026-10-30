@@ -12,21 +12,27 @@ Implements the defense-in-depth pipeline state machine:
 
 from __future__ import annotations
 
+import asyncio
 import time
 
 from loguru import logger
 
+from app.answer_utils import is_numeric_reasoning_query
 from app.config import settings
 from app.layer1_triage.activation_hook import ActivationExtractor
 from app.layer1_triage.probe_model import SurrogateExtractor, TriageEngine
+from app.layer1_triage.semantic_entropy import SemanticEntropyTriage
 from app.layer2_nli_rag.nli_verifier import NLIVerifier
 from app.layer2_nli_rag.proposition_parser import PropositionParser
+from app.layer2_nli_rag.reviser import EvidenceReviser
 from app.layer2_nli_rag.search_retriever import SearchRetriever
 from app.layer3_halluclean.executor import HalluCleanExecutor
 from app.layer3_halluclean.judge import HalluCleanJudge
 from app.layer3_halluclean.planner import HalluCleanPlanner
-from app.llm_clients.ollama_client import OllamaClient
+from app.layer3_halluclean.program_verifier import ProgramVerifier
+from app.llm_clients.ollama_client import OllamaClient, _token_meter, start_token_meter
 from app.models.schemas import (
+    Layer3Result,
     PipelineLayer,
     PipelineResult,
     QueryRequest,
@@ -69,11 +75,16 @@ class DefenseInDepthRouter:
             reject_threshold=settings.nli_reject_threshold,
             device=settings.device,
         )
+        self._reviser = EvidenceReviser(self._judge_ollama)
+
+        # Layer 1 (primary): sampled semantic entropy over the generator
+        self._se_triage = SemanticEntropyTriage(self._ollama, self._nli_verifier)
 
         # Layer 3
         self._planner = HalluCleanPlanner(self._judge_ollama)
         self._executor = HalluCleanExecutor(self._judge_ollama)
         self._judge = HalluCleanJudge(self._judge_ollama)
+        self._program_verifier = ProgramVerifier(self._judge_ollama)
 
         self._initialized = False
         logger.info("DefenseInDepthRouter created | device={}", settings.device)
@@ -100,7 +111,24 @@ class DefenseInDepthRouter:
         except Exception as exc:
             logger.warning("Judge model llama3.1:8b not found, relying on baseline for judging: {}", exc)
 
-        # Load surrogate extractor (Layer 1 — Primary Thesis Architecture)
+        # Load NLI model (Layer 2, also used by Layer 1 semantic clustering)
+        try:
+            await self._nli_verifier.load_model()
+            logger.info("NLI model initialized | device={}", settings.device)
+        except Exception as exc:
+            logger.warning("NLI model could not be loaded: {}", exc)
+
+        if settings.triage_mode == "semantic_entropy":
+            logger.info(
+                "Layer 1 mode: sampled semantic entropy (K={}) — surrogate probe not loaded",
+                settings.se_num_samples,
+            )
+            await self._init_retriever()
+            self._initialized = True
+            logger.info("Defense-in-Depth pipeline fully initialized")
+            return
+
+        # Load surrogate extractor (Layer 1 — legacy probe architecture)
         surrogate_loaded = False
         try:
             await self._surrogate_extractor.load_model()
@@ -140,21 +168,16 @@ class DefenseInDepthRouter:
                     exc,
                 )
 
-        # Load NLI model (Layer 2)
-        try:
-            await self._nli_verifier.load_model()
-            logger.info("Layer 2 (NLI) initialized | device={}", settings.device)
-        except Exception as exc:
-            logger.warning("Layer 2 NLI model could not be loaded: {}", exc)
+        await self._init_retriever()
+        self._initialized = True
+        logger.info("Defense-in-Depth pipeline fully initialized")
 
-        # Initialize ChromaDB (optional)
+    async def _init_retriever(self) -> None:
+        """Initialize ChromaDB (optional)."""
         try:
             await self._search_retriever.init_chromadb()
         except Exception:
             pass
-
-        self._initialized = True
-        logger.info("Defense-in-Depth pipeline fully initialized")
 
     async def shutdown(self) -> None:
         """Clean up resources during shutdown."""
@@ -180,6 +203,7 @@ class DefenseInDepthRouter:
             QueryResponse with the verified answer and optional audit trail.
         """
         start = time.perf_counter()
+        start_token_meter()
 
         logger.info("Processing query: {:.80}...", request.prompt)
 
@@ -204,9 +228,15 @@ class DefenseInDepthRouter:
             )
 
         # Step 2: Layer 1 Triage
-        triage_result = await self._run_layer1(
-            request.prompt, draft_response
-        )
+        se_estimate = None
+        if settings.triage_mode == "semantic_entropy":
+            triage_result, se_estimate = await self._se_triage.triage(
+                request.prompt, draft_response, model=request.model
+            )
+        else:
+            triage_result = await self._run_layer1(
+                request.prompt, draft_response
+            )
 
         # Step 3: Route based on triage decision
         if triage_result.decision == TriageDecision.SAFE:
@@ -219,7 +249,7 @@ class DefenseInDepthRouter:
                 triage_result=triage_result,
                 final_answer=draft_response,
                 total_latency_ms=total_ms,
-                tokens_generated=draft_result.total_tokens,
+                **self._cost_fields(draft_result),
             )
 
             logger.info(
@@ -243,8 +273,20 @@ class DefenseInDepthRouter:
         else:
             # Route to Layer 3: HalluClean Structured Reasoning
             return await self._process_layer3(
-                request, draft_response, draft_result, triage_result, start
+                request, draft_response, draft_result, triage_result, start,
+                se_estimate=se_estimate,
             )
+
+    @staticmethod
+    def _cost_fields(draft_result) -> dict:
+        """Token / latency accounting: total across all LLM calls + draft-only."""
+        meter = _token_meter.get()
+        total = sum(meter) if meter else draft_result.total_tokens
+        return {
+            "tokens_generated": total,
+            "draft_tokens": draft_result.total_tokens,
+            "draft_latency_ms": draft_result.latency_ms,
+        }
 
     # -------------------------------------------------------------------------
     # Layer 1: Semantic Entropy Triage
@@ -314,13 +356,16 @@ class DefenseInDepthRouter:
 
         logger.info("Routing to Layer 2 (NLI-RAG) | H_sem={:.4f}", triage_result.semantic_entropy)
 
-        # Extract atomic propositions
-        propositions = await self._proposition_parser.extract_propositions(
-            draft_response
+        # Extract atomic propositions; search evidence for the question itself in parallel
+        propositions, question_evidence = await asyncio.gather(
+            self._proposition_parser.extract_propositions(
+                draft_response, max_propositions=6
+            ),
+            self._search_retriever.search(request.prompt),
         )
 
-        if not propositions:
-            # No propositions to verify, return draft
+        if not propositions and not question_evidence:
+            # Nothing to verify against, return draft
             total_ms = (time.perf_counter() - start) * 1000
             pipeline_result = PipelineResult(
                 query=request.prompt,
@@ -328,7 +373,7 @@ class DefenseInDepthRouter:
                 triage_result=triage_result,
                 final_answer=draft_response,
                 total_latency_ms=total_ms,
-                tokens_generated=draft_result.total_tokens,
+                **self._cost_fields(draft_result),
             )
             return QueryResponse(
                 answer=draft_response,
@@ -349,6 +394,15 @@ class DefenseInDepthRouter:
         layer2_result = NLIVerifier.aggregate_results(
             propositions, nli_results, draft_response
         )
+
+        # Evidence-grounded revision of the draft
+        layer2_result.refined_response = await self._reviser.revise(
+            question=request.prompt,
+            draft=draft_response,
+            nli_results=nli_results,
+            question_evidence=question_evidence,
+        )
+        layer2_result.search_results_used += len(question_evidence)
         layer2_result.latency_ms = (time.perf_counter() - layer2_start) * 1000
 
         total_ms = (time.perf_counter() - start) * 1000
@@ -360,7 +414,8 @@ class DefenseInDepthRouter:
             layer2_result=layer2_result,
             final_answer=layer2_result.refined_response,
             total_latency_ms=total_ms,
-            tokens_generated=draft_result.total_tokens,
+            layer_answer_changed=layer2_result.refined_response != draft_response,
+            **self._cost_fields(draft_result),
         )
 
         logger.info(
@@ -381,7 +436,8 @@ class DefenseInDepthRouter:
     # -------------------------------------------------------------------------
 
     async def _process_layer3(
-        self, request, draft_response, draft_result, triage_result, start
+        self, request, draft_response, draft_result, triage_result, start,
+        se_estimate=None,
     ) -> QueryResponse:
         """Process query through Layer 3: HalluClean structured reasoning."""
         layer3_start = time.perf_counter()
@@ -394,11 +450,29 @@ class DefenseInDepthRouter:
         # Stage 1: Plan
         graph = await self._planner.generate_plan(request.prompt)
 
-        # Stage 2: Execute
-        graph, reasoning_traces = await self._executor.execute_plan(graph)
+        if (
+            settings.halluclean_reasoning_mode == "program_vote"
+            and is_numeric_reasoning_query(request.prompt)
+        ):
+            # Stages 2-4: program execution as external feedback + verified vote
+            plan_text = "\n".join(f"{i}. {s.description}" for i, s in enumerate(graph.steps, start=1))
+            candidates = se_estimate.responses if se_estimate is not None else [draft_response]
+            refined, reasoning_traces, judgment = await self._program_verifier.verify(
+                request.prompt, plan_text, candidates, draft_response
+            )
+            layer3_result = Layer3Result(
+                execution_graph=graph,
+                reasoning_traces=reasoning_traces,
+                judgment=judgment,
+                refined_response=refined,
+                latency_ms=0.0,
+            )
+        else:
+            # Stage 2: Execute
+            graph, reasoning_traces = await self._executor.execute_plan(graph)
 
-        # Stages 3 & 4: Judge and Refine
-        layer3_result = await self._judge.judge_and_refine(graph, reasoning_traces, draft_response)
+            # Stages 3 & 4: Judge and Refine
+            layer3_result = await self._judge.judge_and_refine(graph, reasoning_traces, draft_response)
         layer3_result.latency_ms = (time.perf_counter() - layer3_start) * 1000
 
         total_ms = (time.perf_counter() - start) * 1000
@@ -410,7 +484,8 @@ class DefenseInDepthRouter:
             layer3_result=layer3_result,
             final_answer=layer3_result.refined_response,
             total_latency_ms=total_ms,
-            tokens_generated=draft_result.total_tokens,
+            layer_answer_changed=layer3_result.refined_response != draft_response,
+            **self._cost_fields(draft_result),
         )
 
         logger.info(
@@ -458,7 +533,7 @@ class DefenseInDepthRouter:
                 triage_result=triage,
                 final_answer=draft_response,
                 total_latency_ms=total_ms,
-                tokens_generated=draft_result.total_tokens,
+                **self._cost_fields(draft_result),
             )
             return QueryResponse(
                 answer=draft_response,

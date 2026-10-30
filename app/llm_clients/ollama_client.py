@@ -10,12 +10,36 @@ Provides an asynchronous interface to the local Ollama server for:
 from __future__ import annotations
 
 import asyncio
+import contextvars
 from typing import Any, AsyncIterator
 
 from loguru import logger
 from ollama import AsyncClient, ResponseError
 
 from app.config import settings
+
+
+# Per-request token accumulator. The router opens a meter at the start of a
+# query so that every Ollama call made on its behalf (draft, semantic entropy
+# samples, Layer 2 / Layer 3 calls) is counted in the reported token cost.
+_token_meter: contextvars.ContextVar[list[int] | None] = contextvars.ContextVar(
+    "token_meter", default=None
+)
+
+
+def start_token_meter() -> list[int]:
+    """Start a new token meter for the current async context: [prompt, completion]."""
+    meter = [0, 0]
+    _token_meter.set(meter)
+    return meter
+
+
+def _record_tokens(result: "GenerationResult") -> "GenerationResult":
+    meter = _token_meter.get()
+    if meter is not None:
+        meter[0] += result.prompt_tokens
+        meter[1] += result.completion_tokens
+    return result
 
 
 class OllamaClient:
@@ -91,6 +115,7 @@ class OllamaClient:
         temperature: float = 0.0,
         max_tokens: int = 2048,
         stream: bool = False,
+        seed: int | None = None,
     ) -> GenerationResult:
         """
         Generate a completion from the Ollama model.
@@ -102,6 +127,7 @@ class OllamaClient:
             temperature: Sampling temperature (0.0 = greedy).
             max_tokens: Maximum tokens to generate.
             stream: Whether to stream the response.
+            seed: Optional sampling seed for reproducible stochastic samples.
 
         Returns:
             GenerationResult with text, token counts, and timing info.
@@ -112,6 +138,8 @@ class OllamaClient:
             "temperature": temperature,
             "num_predict": max_tokens,
         }
+        if seed is not None:
+            options["seed"] = seed
 
         try:
             if stream:
@@ -125,14 +153,14 @@ class OllamaClient:
                 stream=False,
             )
 
-            return GenerationResult(
+            return _record_tokens(GenerationResult(
                 text=response.response,
                 model=response.model,
                 prompt_tokens=response.prompt_eval_count or 0,
                 completion_tokens=response.eval_count or 0,
                 total_duration_ns=response.total_duration or 0,
                 eval_duration_ns=response.eval_duration or 0,
-            )
+            ))
 
         except ResponseError as exc:
             logger.error("Ollama generation failed: {}", exc)
@@ -165,14 +193,14 @@ class OllamaClient:
 
         full_text = "".join(chunks)
 
-        return GenerationResult(
+        return _record_tokens(GenerationResult(
             text=full_text,
             model=model,
             prompt_tokens=final_response.prompt_eval_count if final_response else 0,
             completion_tokens=final_response.eval_count if final_response else 0,
             total_duration_ns=final_response.total_duration if final_response else 0,
             eval_duration_ns=final_response.eval_duration if final_response else 0,
-        )
+        ))
 
     # -------------------------------------------------------------------------
     # Chat
@@ -211,14 +239,14 @@ class OllamaClient:
                 stream=False,
             )
 
-            return GenerationResult(
+            return _record_tokens(GenerationResult(
                 text=response.message.content,
                 model=response.model,
                 prompt_tokens=response.prompt_eval_count or 0,
                 completion_tokens=response.eval_count or 0,
                 total_duration_ns=response.total_duration or 0,
                 eval_duration_ns=response.eval_duration or 0,
-            )
+            ))
 
         except ResponseError as exc:
             logger.error("Ollama chat failed: {}", exc)
@@ -256,14 +284,14 @@ class OllamaClient:
             stream=False,
         )
 
-        return GenerationResult(
+        return _record_tokens(GenerationResult(
             text=response.response,
             model=response.model,
             prompt_tokens=response.prompt_eval_count or 0,
             completion_tokens=response.eval_count or 0,
             total_duration_ns=response.total_duration or 0,
             eval_duration_ns=response.eval_duration or 0,
-        )
+        ))
 
 
 # =============================================================================

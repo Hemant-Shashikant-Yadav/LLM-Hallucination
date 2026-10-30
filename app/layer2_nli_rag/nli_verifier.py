@@ -197,6 +197,52 @@ class NLIVerifier:
 
         return label, confidence, all_scores
 
+    @property
+    def is_loaded(self) -> bool:
+        return self._model is not None and self._tokenizer is not None
+
+    async def score_pairs(
+        self,
+        pairs: list[tuple[str, str]],
+    ) -> list[dict[str, float]]:
+        """
+        Batched NLI scoring of (premise, hypothesis) pairs.
+
+        Returns one {"contradiction", "entailment", "neutral"} probability
+        dict per pair. Used by Layer 1 semantic-entropy clustering.
+        """
+        if not pairs:
+            return []
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self._score_pairs_sync, pairs)
+
+    def _score_pairs_sync(
+        self,
+        pairs: list[tuple[str, str]],
+        batch_size: int = 16,
+    ) -> list[dict[str, float]]:
+        if not self.is_loaded:
+            raise RuntimeError("NLI model not loaded. Call load_model() first.")
+
+        scores: list[dict[str, float]] = []
+        for i in range(0, len(pairs), batch_size):
+            chunk = pairs[i : i + batch_size]
+            inputs = self._tokenizer(
+                [p for p, _ in chunk],
+                [h for _, h in chunk],
+                return_tensors="pt",
+                truncation=True,
+                max_length=512,
+                padding=True,
+            ).to(self._device)
+            with torch.no_grad():
+                probs = torch.softmax(self._model(**inputs).logits, dim=1).cpu()
+            for row in probs:
+                scores.append(
+                    {name: row[j].item() for j, name in enumerate(self._LABEL_NAMES)}
+                )
+        return scores
+
     # -------------------------------------------------------------------------
     # Conflict-Aware Weighted Consensus
     # -------------------------------------------------------------------------
