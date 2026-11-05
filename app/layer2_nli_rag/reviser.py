@@ -20,9 +20,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 
 from loguru import logger
 
+from app.config import settings
 from app.llm_clients.ollama_client import OllamaClient
 from app.models.schemas import NLILabel, NLIResult, SearchResult
 from app.telemetry import record_degradation
@@ -31,21 +33,25 @@ from app.telemetry import record_degradation
 _REVISER_SYSTEM = """You are a meticulous fact-checker. You rewrite a draft answer so that 
 every statement in it is true.
 
-Many questions are written to trigger common misconceptions, myths, superstitions,
-conspiracy theories, fictional facts, or false premises. Rules:
-1. Keep claims that the evidence supports.
-2. Remove or correct claims that the evidence contradicts.
-3. Do not state myths, legends, fiction, or unverified claims as facts.
-4. If the question assumes something false, say so plainly
-   (e.g. "No such X exists" or "There is no country where ...").
-5. If the truth is uncertain or unknown, say that instead of guessing.
+Some questions are written to trigger common misconceptions, myths, superstitions,
+conspiracy theories, fictional facts, or false premises. Others are ordinary questions
+with a well-known correct answer. Rules:
+1. Start with the direct answer. No preamble such as "The answer is:" or "Corrected answer:".
+2. Keep claims that the evidence supports, including well-known facts and famous
+   quotes. A correct draft should stay correct: do not change it just to sound cautious.
+3. Remove or correct claims that the evidence contradicts.
+4. Do not state myths, legends, fiction, or unverified claims as facts.
+5. Say a premise is false ONLY when the evidence or a well-established fact shows it
+   is false (e.g. "No such X exists"). Never "debunk" something merely because the
+   question looks like a trick.
+6. If the truth is uncertain or unknown, say that instead of guessing.
    Never predict the future and never present a forecast as fact.
-6. Be minimal: answer only what the question asks. Do NOT add extra examples,
+7. Be minimal: answer only what the question asks. Do NOT add extra examples,
    numbers, names, dates, or statistics that the question does not need -
    every extra detail is a new chance to be wrong.
-7. Web evidence can be noisy, outdated, or off-topic. Use it only when it clearly
+8. Web evidence can be noisy, outdated, or off-topic. Use it only when it clearly
    and directly answers the question; otherwise rely on well-established facts.
-8. Answer in 1-2 short sentences. No preamble, no lists.
+9. Answer in 1-2 short sentences. No lists.
 """
 
 _REVISER_PROMPT = """QUESTION: {question}
@@ -73,9 +79,23 @@ If the answer is unknown or disputed, say so."""
 
 _COVE_FINAL_SYSTEM = _REVISER_SYSTEM + """
 You are also given independent verification questions and answers.
-Where they contradict the proposed answer, trust the verification and correct the answer.
+Where they clearly contradict the proposed answer, trust the verification and correct
+the answer; where they agree with it or are unsure, keep the proposed answer.
 Start with the direct answer to the QUESTION. If the verification shows that nothing
 satisfies the question (e.g. no such country, event, or proof exists), say that first."""
+
+# "The final, truthful answer to the question is:" and similar lead-ins
+_PREAMBLE = re.compile(
+    r"^\s*(?:here(?:'s| is)\s+)?(?:the|my)?\s*(?:final|corrected|revised|truthful|"
+    r"verified|,|\s)*answer(?:\s+to\s+the\s+question)?(?:\s+\"[^\"\n]{0,200}\")?"
+    r"\s*(?:is)?\s*:\s*",
+    re.IGNORECASE,
+)
+
+
+def _strip_preamble(text: str) -> str:
+    stripped = _PREAMBLE.sub("", text.strip(), count=1).strip()
+    return stripped or text.strip()
 
 _COVE_FINAL_PROMPT = """QUESTION: {question}
 
@@ -86,6 +106,51 @@ INDEPENDENT VERIFICATION:
 {qa}
 
 Write the final, truthful answer to the question."""
+
+_EDIT_SYSTEM = """You are a careful fact-checker who makes minimal edits to an answer.
+
+Rules:
+1. You are given an answer and the specific claims in it that retrieved evidence contradicts.
+2. Fix ONLY those claims: correct a claim when the evidence clearly states the right
+   fact, otherwise remove it. If a corrected claim was the main answer, make the
+   first sentence give the corrected answer.
+3. Keep every other sentence, caveat and qualification exactly as it is.
+4. Do not add new facts, numbers, names or examples.
+5. Output only the edited answer, with no preamble or explanation of your edits."""
+
+_EDIT_PROMPT = """QUESTION: {question}
+
+ANSWER:
+{draft}
+
+CLAIMS CONTRADICTED BY EVIDENCE:
+{claims}
+
+OTHER EVIDENCE ABOUT THE QUESTION (use it to state the correct fact):
+{evidence}
+
+Write the edited answer."""
+
+_FRESH_SYSTEM = """You answer questions about current or recent facts using web search results.
+
+Rules:
+1. Base the answer on the search results. When they disagree, prefer the most recent
+   or most authoritative source.
+2. The draft answer comes from a model with a training cut-off and may be out of date;
+   when the search results contradict it, trust the search results.
+3. If the search results do not answer the question, give the draft's answer and say
+   it may be out of date.
+4. Start with the direct answer, in 1-3 sentences. No preamble."""
+
+_FRESH_PROMPT = """QUESTION: {question}
+
+DRAFT ANSWER (from model memory, may be outdated):
+{draft}
+
+SEARCH RESULTS:
+{evidence}
+
+Write the up-to-date answer."""
 
 _VERDICT_TEXT = {
     NLILabel.ENTAILMENT: "SUPPORTED",
@@ -107,7 +172,13 @@ class EvidenceReviser:
         draft: str,
         nli_results: list[NLIResult],
         question_evidence: list[SearchResult],
+        task_type: str = "factual",
     ) -> str:
+        if task_type == "time_sensitive":
+            return await self._answer_from_evidence(question, draft, question_evidence)
+        if settings.layer2_revision_mode == "evidence_gated":
+            return await self._evidence_gated_edit(question, draft, nli_results, question_evidence)
+
         claims = "\n".join(
             f"- [{_VERDICT_TEXT.get(r.label, 'UNVERIFIED')}] {r.proposition.text}"
             + (
@@ -135,12 +206,96 @@ class EvidenceReviser:
                 temperature=0.0,
                 max_tokens=300,
             )
-            revised = result.text.strip() or draft
+            revised = _strip_preamble(result.text) or draft
         except Exception as exc:
             record_degradation("layer2.revise", f"revision failed, returning draft: {exc}")
             return draft
 
         return await self._chain_of_verification(question, revised)
+
+    async def _answer_from_evidence(
+        self,
+        question: str,
+        draft: str,
+        question_evidence: list[SearchResult],
+    ) -> str:
+        """
+        Time-sensitive questions: the model's memory has a training cut-off, so the
+        answer comes from current search results; the draft is only a fallback.
+        """
+        if not question_evidence:
+            record_degradation(
+                "layer2.freshness", "no search results for a time-sensitive question"
+            )
+            return f"{draft.strip()}\n\n(Note: this could not be checked against current sources and may be out of date.)"
+        evidence = "\n".join(
+            f"- {e.title}: {e.snippet[:400]}" for e in question_evidence[:5]
+        )
+        try:
+            result = await self._client.generate(
+                prompt=_FRESH_PROMPT.format(question=question, draft=draft[:1500], evidence=evidence),
+                system=_FRESH_SYSTEM,
+                temperature=0.0,
+                max_tokens=300,
+            )
+        except Exception as exc:
+            record_degradation("layer2.freshness", f"evidence answer failed, returning draft: {exc}")
+            return draft
+        logger.info("Layer 2 freshness: answered from {} search results", len(question_evidence[:5]))
+        return _strip_preamble(result.text) or draft
+
+    async def _evidence_gated_edit(
+        self,
+        question: str,
+        draft: str,
+        nli_results: list[NLIResult],
+        question_evidence: list[SearchResult],
+    ) -> str:
+        """
+        Do-no-harm revision: edit the draft only where retrieved evidence
+        contradicts it, and only those claims. Unverifiable (neutral) claims are
+        left alone — rewriting them without evidence lets the reviser's own
+        errors replace a draft that may have been right.
+        """
+        contradicted = [
+            r for r in nli_results
+            if r.label == NLILabel.CONTRADICTION and r.premise_used
+            and not r.premise_used.startswith("[")
+        ]
+        if not contradicted:
+            logger.info(
+                "Layer 2 gate: 0/{} claims contradicted by evidence — draft kept unchanged",
+                len(nli_results),
+            )
+            return draft
+
+        claims = "\n".join(
+            f'- CLAIM: {r.proposition.text}\n  EVIDENCE: {r.premise_used[:400]}'
+            for r in contradicted
+        )
+        try:
+            result = await self._client.generate(
+                prompt=_EDIT_PROMPT.format(
+                    question=question,
+                    draft=draft[:3000],
+                    claims=claims,
+                    evidence="\n".join(
+                        f"- {e.title}: {e.snippet[:400]}" for e in question_evidence[:4]
+                    ) or "(none)",
+                ),
+                system=_EDIT_SYSTEM,
+                temperature=0.0,
+                max_tokens=1024,
+            )
+        except Exception as exc:
+            record_degradation("layer2.edit", f"targeted edit failed, returning draft: {exc}")
+            return draft
+        edited = _strip_preamble(result.text)
+        logger.info(
+            "Layer 2 gate: {}/{} claims contradicted — targeted edit applied",
+            len(contradicted), len(nli_results),
+        )
+        return edited or draft
 
     async def _chain_of_verification(self, question: str, answer: str) -> str:
         """Factored CoVe: plan checks → answer them independently → final answer."""
@@ -175,7 +330,7 @@ class EvidenceReviser:
                 max_tokens=200,
             )
             logger.info("CoVe | checks={}", len(questions))
-            return final.text.strip() or answer
+            return _strip_preamble(final.text) or answer
         except Exception as exc:
             record_degradation("layer2.cove", f"CoVe verification failed, keeping revision: {exc}")
             return answer

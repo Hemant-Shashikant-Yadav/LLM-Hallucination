@@ -13,14 +13,22 @@ Implements the defense-in-depth pipeline state machine:
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import time
 
 from loguru import logger
 
-from app.answer_utils import is_numeric_reasoning_query
+from app.answer_utils import (
+    Calculation,
+    calculate,
+    extract_final_answer,
+    is_numeric_reasoning_query,
+    numbers_match,
+)
 from app.config import settings
 from app.layer1_triage.activation_hook import ActivationExtractor
 from app.layer1_triage.probe_model import SurrogateExtractor, TriageEngine
+from app.layer1_triage.task_router import TaskRouter
 from app.layer1_triage.semantic_entropy import SemanticEntropyTriage
 from app.layer2_nli_rag.nli_verifier import NLIVerifier
 from app.layer2_nli_rag.proposition_parser import PropositionParser
@@ -39,13 +47,19 @@ from app.telemetry import (
     stage,
 )
 from app.models.schemas import (
+    ExecutionGraph,
     Layer3Result,
+    PlanNode,
     PipelineLayer,
     PipelineResult,
     QueryRequest,
     QueryResponse,
     TriageDecision,
 )
+
+
+# Task type of the query being processed, for the audit trail
+_task_type: contextvars.ContextVar[str] = contextvars.ContextVar("task_type", default="")
 
 
 class DefenseInDepthRouter:
@@ -86,6 +100,7 @@ class DefenseInDepthRouter:
 
         # Layer 1 (primary): sampled semantic entropy over the generator
         self._se_triage = SemanticEntropyTriage(self._ollama, self._nli_verifier)
+        self._task_router = TaskRouter(self._ollama)
 
         # Layer 3
         self._planner = HalluCleanPlanner(self._judge_ollama)
@@ -236,6 +251,7 @@ class DefenseInDepthRouter:
     async def _process_query(self, request: QueryRequest) -> QueryResponse:
         start = time.perf_counter()
         start_token_meter()
+        _task_type.set("")
 
         logger.info("Processing query: {:.80}...", request.prompt)
 
@@ -257,17 +273,30 @@ class DefenseInDepthRouter:
                 request, draft_response, draft_result, start
             )
 
-        # Step 2: Layer 1 Triage
+        # Step 2a: What kind of question is this? (math / factual / time_sensitive)
+        async with stage("layer1.task_route") as out:
+            task_type = await self._task_router.classify(request.prompt)
+            exact = calculate(request.prompt) if task_type == "math" else None
+            out.update(task_type=task_type, exact=exact.display if exact else None)
+        _task_type.set(task_type)
+
+        # Step 2b: Layer 1 Triage
         se_estimate = None
         async with stage("layer1.triage", mode=settings.triage_mode) as out:
             if settings.triage_mode == "semantic_entropy":
                 triage_result, se_estimate = await self._se_triage.triage(
-                    request.prompt, draft_response, model=request.model
+                    request.prompt, draft_response, model=request.model, task_type=task_type
                 )
             else:
                 triage_result = await self._run_layer1(
                     request.prompt, draft_response
                 )
+            # An exactly computable query whose draft disagrees with the exact value
+            # is wrong regardless of how consistent the samples were.
+            if exact is not None and not numbers_match(
+                extract_final_answer(draft_response), exact.value
+            ):
+                triage_result.decision = TriageDecision.REASONING_UNCERTAIN
             out.update(
                 decision=triage_result.decision.value,
                 H_sem=round(triage_result.semantic_entropy, 4),
@@ -302,14 +331,15 @@ class DefenseInDepthRouter:
         elif triage_result.decision == TriageDecision.KNOWLEDGE_UNCERTAIN:
             # Route to Layer 2: NLI-RAG Verification
             return await self._process_layer2(
-                request, draft_response, draft_result, triage_result, start
+                request, draft_response, draft_result, triage_result, start,
+                task_type=task_type,
             )
 
         else:
             # Route to Layer 3: HalluClean Structured Reasoning
             return await self._process_layer3(
                 request, draft_response, draft_result, triage_result, start,
-                se_estimate=se_estimate,
+                se_estimate=se_estimate, task_type=task_type, exact=exact,
             )
 
     @staticmethod
@@ -323,6 +353,7 @@ class DefenseInDepthRouter:
             "draft_latency_ms": draft_result.latency_ms,
             "trace_id": current_trace_id(),
             "degradations": degradations(),
+            "task_type": _task_type.get(),
         }
 
     # -------------------------------------------------------------------------
@@ -386,7 +417,8 @@ class DefenseInDepthRouter:
     # -------------------------------------------------------------------------
 
     async def _process_layer2(
-        self, request, draft_response, draft_result, triage_result, start
+        self, request, draft_response, draft_result, triage_result, start,
+        task_type: str = "factual",
     ) -> QueryResponse:
         """Process query through Layer 2: NLI-RAG verification."""
         layer2_start = time.perf_counter()
@@ -428,6 +460,15 @@ class DefenseInDepthRouter:
                 propositions
             )
             out.update(with_evidence=sum(1 for v in evidence_map.values() if v))
+            # Per-claim searches for long, specific sentences often come back empty
+            # (39% of claims on the dev slice). Optionally check every claim against the
+            # question's own results too. Off by default: on dev it raised coverage to
+            # 89% but also produced spurious contradictions and more harmful edits.
+            if question_evidence and settings.layer2_question_evidence_for_claims:
+                for prop in propositions:
+                    own = evidence_map.get(prop.id, [])
+                    seen = {e.url for e in own}
+                    evidence_map[prop.id] = own + [e for e in question_evidence if e.url not in seen]
         if propositions and not any(evidence_map.values()) and not question_evidence:
             record_degradation("layer2.search", "web search returned no evidence for any claim")
 
@@ -450,6 +491,7 @@ class DefenseInDepthRouter:
                 draft=draft_response,
                 nli_results=nli_results,
                 question_evidence=question_evidence,
+                task_type=task_type,
             )
         layer2_result.search_results_used += len(question_evidence)
         layer2_result.latency_ms = (time.perf_counter() - layer2_start) * 1000
@@ -486,29 +528,58 @@ class DefenseInDepthRouter:
 
     async def _process_layer3(
         self, request, draft_response, draft_result, triage_result, start,
-        se_estimate=None,
+        se_estimate=None, task_type: str | None = None, exact: Calculation | None = None,
     ) -> QueryResponse:
         """Process query through Layer 3: HalluClean structured reasoning."""
         layer3_start = time.perf_counter()
+        is_math = (
+            task_type == "math" if task_type is not None
+            else is_numeric_reasoning_query(request.prompt)
+        )
 
         logger.info(
             "Routing to Layer 3 (HalluClean) | H_sem={:.4f}",
             triage_result.semantic_entropy,
         )
 
+        if exact is not None:
+            # Plain arithmetic: an exact calculation replaces planning and voting
+            graph = ExecutionGraph(
+                query=request.prompt,
+                steps=[PlanNode(step_id=1, description=f"Evaluate {exact.expression}",
+                                dependencies=[], status="completed", output=exact.display)],
+                total_steps=1,
+            )
+            refined, reasoning_traces, judgment = await self._program_verifier.verify(
+                request.prompt, "", [draft_response], draft_response, exact=exact
+            )
+            layer3_result = Layer3Result(
+                execution_graph=graph, reasoning_traces=reasoning_traces,
+                judgment=judgment, refined_response=refined, latency_ms=0.0,
+            )
+            return self._finish_layer3(
+                request, draft_response, draft_result, triage_result, start,
+                layer3_start, graph, layer3_result,
+            )
+
         # Stage 1: Plan
         async with stage("layer3.plan") as out:
             graph = await self._planner.generate_plan(request.prompt)
             out.update(steps=len(graph.steps))
 
-        if (
-            settings.halluclean_reasoning_mode == "program_vote"
-            and is_numeric_reasoning_query(request.prompt)
-        ):
+        if settings.halluclean_reasoning_mode == "program_vote" and is_math:
             # Stages 2-4: program execution as external feedback + verified vote.
             # The LLM executor/judge below are intentionally NOT used on this path.
             plan_text = "\n".join(f"{i}. {s.description}" for i, s in enumerate(graph.steps, start=1))
             candidates = se_estimate.responses if se_estimate is not None else [draft_response]
+            if settings.l3_extra_samples:
+                async with stage("layer3.extra_samples", n=settings.l3_extra_samples) as out:
+                    extra = await self._se_triage.sample(
+                        request.prompt, request.model,
+                        n=settings.l3_extra_samples, seed_base=2000,
+                    )
+                    candidates = [*candidates, *extra]
+                    out.update(ok=len(extra))
             async with stage("layer3.program_vote", candidates=len(candidates)) as out:
                 refined, reasoning_traces, judgment = await self._program_verifier.verify(
                     request.prompt, plan_text, candidates, draft_response
@@ -531,8 +602,16 @@ class DefenseInDepthRouter:
             async with stage("layer3.judge_refine") as out:
                 layer3_result = await self._judge.judge_and_refine(graph, reasoning_traces, draft_response)
                 out.update(consistent=layer3_result.judgment.is_consistent)
-        layer3_result.latency_ms = (time.perf_counter() - layer3_start) * 1000
+        return self._finish_layer3(
+            request, draft_response, draft_result, triage_result, start,
+            layer3_start, graph, layer3_result,
+        )
 
+    def _finish_layer3(
+        self, request, draft_response, draft_result, triage_result, start,
+        layer3_start, graph, layer3_result,
+    ) -> QueryResponse:
+        layer3_result.latency_ms = (time.perf_counter() - layer3_start) * 1000
         total_ms = (time.perf_counter() - start) * 1000
 
         pipeline_result = PipelineResult(

@@ -28,9 +28,12 @@ from dataclasses import dataclass, field
 from loguru import logger
 
 from app.answer_utils import (
-    extract_final_number,
+    canonicalize,
+    extract_choice,
+    extract_final_answer,
     is_numeric_reasoning_query,
     leading_sentences,
+    parse_options,
 )
 from app.config import settings
 from app.layer2_nli_rag.nli_verifier import NLIVerifier
@@ -90,14 +93,23 @@ class SemanticEntropyTriage:
         prompt: str,
         draft_response: str,
         model: str | None = None,
+        task_type: str | None = None,
     ) -> tuple[TriageResult, SemanticEntropyEstimate]:
         start = time.perf_counter()
 
         samples = await self._sample(prompt, model)
         responses = [draft_response, *samples]
-        is_numeric = is_numeric_reasoning_query(prompt)
+        is_numeric = (
+            task_type == "math" if task_type is not None else is_numeric_reasoning_query(prompt)
+        )
 
-        if is_numeric:
+        options = parse_options(prompt)
+        if options:
+            # Multiple choice: the meaning of an answer is the option it picks
+            cluster_ids, numeric_answers = self._cluster_keys(
+                [extract_choice(r, options) for r in responses]
+            )
+        elif is_numeric:
             cluster_ids, numeric_answers = self._cluster_numeric(responses)
         else:
             cluster_ids = await self._cluster_semantic(prompt, responses)
@@ -122,7 +134,11 @@ class SemanticEntropyTriage:
                 f"only {len(samples)}/{self._num_samples} samples succeeded; "
                 "H_sem unreliable, escalating instead of fast path",
             )
-        if enough_samples and entropy < t_safe and estimate.draft_in_majority:
+        if task_type == "time_sensitive":
+            # A confident answer about a changing fact can simply be out of date:
+            # agreement between samples says nothing about freshness.
+            decision = TriageDecision.KNOWLEDGE_UNCERTAIN
+        elif enough_samples and entropy < t_safe and estimate.draft_in_majority:
             decision = TriageDecision.SAFE
         elif is_numeric:
             decision = TriageDecision.REASONING_UNCERTAIN
@@ -165,7 +181,13 @@ class SemanticEntropyTriage:
     # Sampling
     # -------------------------------------------------------------------------
 
-    async def _sample(self, prompt: str, model: str | None) -> list[str]:
+    async def sample(self, prompt: str, model: str | None, n: int, seed_base: int) -> list[str]:
+        """Draw n more stochastic samples (used by Layer 3's self-consistency vote)."""
+        return await self._sample(prompt, model, n=n, seed_base=seed_base)
+
+    async def _sample(
+        self, prompt: str, model: str | None, n: int | None = None, seed_base: int = 1000
+    ) -> list[str]:
         async def _one(i: int) -> str:
             try:
                 res = await self._generator.generate(
@@ -173,14 +195,14 @@ class SemanticEntropyTriage:
                     model=model,
                     temperature=self._temperature,
                     max_tokens=settings.se_max_tokens,
-                    seed=1000 + i,
+                    seed=seed_base + i,
                 )
                 return res.text
             except Exception as exc:
                 record_degradation("layer1.sample", f"sample {i} failed: {type(exc).__name__}: {exc}")
                 return ""
 
-        samples = await asyncio.gather(*(_one(i) for i in range(self._num_samples)))
+        samples = await asyncio.gather(*(_one(i) for i in range(n or self._num_samples)))
         return [s for s in samples if s.strip()]
 
     # -------------------------------------------------------------------------
@@ -189,7 +211,14 @@ class SemanticEntropyTriage:
 
     @staticmethod
     def _cluster_numeric(responses: list[str]) -> tuple[list[int], list[str | None]]:
-        answers = [extract_final_number(r) for r in responses]
+        # Canonical answers: fractions, symbolic answers and rounding differences
+        # (142857.14 vs 142857.142857) land in the same cluster
+        return SemanticEntropyTriage._cluster_keys(
+            canonicalize([extract_final_answer(r) for r in responses])
+        )
+
+    @staticmethod
+    def _cluster_keys(answers: list[str | None]) -> tuple[list[int], list[str | None]]:
         mapping: dict[str, int] = {}
         cluster_ids: list[int] = []
         for ans in answers:

@@ -88,6 +88,13 @@ class FrameworkSettings(BaseSettings):
             "'surrogate_probe' uses the TinyLlama dual-head probe (needs trained weights)."
         ),
     )
+    task_router_mode: Literal["llm", "heuristic"] = Field(
+        default="llm",
+        description=(
+            "'llm': rules decide clear-cut questions, the pipeline model decides ambiguous "
+            "ones. 'heuristic': rules only (no extra LLM call)."
+        ),
+    )
     se_num_samples: int = Field(
         default=4,
         ge=1,
@@ -166,6 +173,22 @@ class FrameworkSettings(BaseSettings):
             "Used by the conflict-aware weighted NLI verifier."
         ),
     )
+    layer2_revision_mode: Literal["evidence_gated", "full_rewrite"] = Field(
+        default="evidence_gated",
+        description=(
+            "'evidence_gated' edits only claims that evidence contradicts and keeps the "
+            "draft otherwise (do-no-harm). 'full_rewrite' is the Phase 1 rewrite + CoVe, "
+            "which helped llama2:7b but over-corrected the stronger qwen2.5:3b drafts."
+        ),
+    )
+    layer2_question_evidence_for_claims: bool = Field(
+        default=False,
+        description=(
+            "Also verify each claim against the question-level search results. Raises "
+            "evidence coverage but, on the qwen2.5:3b dev slice, added spurious "
+            "contradictions (truthful 77.5% → 70.0% vs 77.5% → 77.5% without)."
+        ),
+    )
     search_backend: Literal["duckduckgo", "tavily", "both"] = Field(
         default="duckduckgo",
         description="Web search backend for evidence retrieval.",
@@ -199,6 +222,34 @@ class FrameworkSettings(BaseSettings):
         description=(
             "Layer 3 for quantitative queries. 'program_vote' = program-verified "
             "self-consistency (PAL + PROVE); 'plan_judge' = LLM judge + refiner."
+        ),
+    )
+    program_vote_num_programs: int = Field(
+        default=5,
+        ge=1,
+        le=10,
+        description="Independent programs written per quantitative query in program_vote mode.",
+    )
+    program_vote_weighting: Literal["sample_primary", "program_primary"] = Field(
+        default="sample_primary",
+        description=(
+            "'sample_primary': majority over reasoning samples, programs add "
+            "program_vote_weight each. 'program_primary' (Phase 1): only "
+            "program-confirmed answers can win."
+        ),
+    )
+    program_vote_weight: float = Field(
+        default=0.5,
+        ge=0.0,
+        description="Vote weight of one program relative to one reasoning sample.",
+    )
+    l3_extra_samples: int = Field(
+        default=6,
+        ge=0,
+        le=20,
+        description=(
+            "Extra reasoning samples drawn in Layer 3, added to the draft and the "
+            "Layer 1 samples for the self-consistency vote."
         ),
     )
     halluclean_executor_mode: Literal["single_pass", "per_step"] = Field(

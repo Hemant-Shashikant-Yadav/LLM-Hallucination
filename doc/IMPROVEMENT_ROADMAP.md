@@ -1,0 +1,174 @@
+# Improvement Roadmap
+
+Living list of what to improve next, with the evidence behind each item.
+Last updated: 2026-11-05.
+
+## Standing requirements
+
+1. **Single model in every pipeline role.** The same Ollama model drafts, samples,
+   verifies (Layer 2) and repairs (Layer 3). Changing *which* model is allowed; mixing
+   models is not. The evaluation judge is separate and must not be the pipeline model.
+   Current pipeline model: `qwen2.5:3b`. Current judge: `llama3.1:8b`.
+2. **General-purpose questions.** Beyond GSM8K and TruthfulQA, the framework must answer
+   any *basic* web/factual question or math question without crashing, misrouting, or
+   returning a mangled answer. Use the smoke list in [§4](#4-general-question-smoke-list)
+   as the acceptance test after every routing or parsing change.
+3. **Do no harm.** A layer may only change a draft when it has evidence the draft is wrong
+   (contradicting evidence, or a sample/program majority). Ties and weak signals keep the draft.
+4. **Calibrate on dev, report on test.** Thresholds are tuned on items 500–539, never on
+   test items 0–99.
+
+## 1. Where we are
+
+Hardware: GTX 1650 (4 GB). `qwen2.5:3b` fits fully in VRAM (~19 tok/s); `llama2:7b`
+and `llama3.1:8b` don't fit and are 3–6× slower. Never run two different models at the
+same time, because Ollama swaps them on every request (seen: 9 min/question).
+
+| Layer | Change (Nov 2026) | Dev result (qwen2.5:3b) |
+|---|---|---|
+| L1 triage | `T_safe_reasoning` 0.0 → 0.2: unanimous math answers take the fast path | All 11 H=0 drafts on dev were correct; verifying them only caused harm |
+| L3 math | Few-shot programs, self-debug repair, reject negative/fractional answers where impossible, weak-vote and tie guards, **11-sample self-consistency vote with programs as weight 0.5** | GSM8K 70.0% → **87.5%** (7 fixed / 0 broken, p = 0.016, N = 40) |
+| L2 facts | Full rewrite → **evidence-gated minimal edit**; ddgs search fixed | TruthfulQA 77.5% → 77.5% (0 / 0). The Phase 1 rewrite was 80% → 65% |
+
+**Test set (items 0–99, N = 100 each, `evaluation/results_v5_qwen3b/`):**
+
+| Benchmark | Raw qwen2.5:3b | Framework | Δ | Fixed / Broken | McNemar p | Latency | Tokens |
+|---|---|---|---|---|---|---|---|
+| GSM8K (exact match) | 80.0% [72, 88] | **86.0%** [79, 92] | **+6.0** | 7 / 1 | 0.070 | 5.6 → 48.7 s | 376 → 4,715 |
+| TruthfulQA (judge: truthful) | 66.0% [56, 75] | 63.0% [53, 72] | −3.0 | 1 / 4 | 0.375 | 3.2 → 42.8 s | 204 → 1,851 |
+| TruthfulQA (ROUGE-L acc) | 46.0% | 47.0% | +1.0 | | 1.0 | | |
+
+- GSM8K: on the 40 questions routed to Layer 3 accuracy went 55% → 70%. The fast path (60) stayed at 96.7%.
+- TruthfulQA: all verdict changes came from the 30 edited answers (unchanged answers got identical
+  verdicts). The 4 breaks were **open-web evidence repeating the myth**: the umbrella
+  "bad luck" superstition, a misattributed quote, "the Queen doesn't speak". TruthfulQA is built
+  from falsehoods that are common online, so open-web snippets are adversarial evidence for it.
+  This makes **P2-7 (curated sources) the top Layer 2 item**.
+
+## 2. Gaps found against requirement 2 (basic web + math questions)
+
+Probed offline on 18 basic questions (`app/answer_utils.py`):
+
+| Problem | Examples | Effect |
+|---|---|---|
+| Regex router sends factual questions with ≥2 numbers to Layer 3 | "What happened on July 20, 1969?", "India's population in 2011 and 2001?", "Everest 8849 m or K2 8611 m?" | Programs and numeric voting on a factual question |
+| Math with spelled-out numbers or no digits goes to Layer 2 web search | "three times seven", "square root of 144", "7 squared", "derivative of x^2", "100 Fahrenheit to Celsius" | No program check; web snippets used for arithmetic |
+| Answer parser only knows decimal numbers | "3/4" → 3, "7/8" → 8, "1.5 million" → 1.5, "2x" → 2, "±12" → 12 | Wrong clustering and wrong votes for fractions, scales, symbolic answers |
+| Time-sensitive questions can take the fast path | "Who is the current UK Prime Minister?", "latest iPhone?" | A confident but stale answer skips retrieval entirely |
+| Layer 1 is not discriminative on long answers | 39/40 TruthfulQA dev questions had H_sem ≈ 1.0 | Triage sends nearly everything to Layer 2 (cost, no selectivity) |
+
+## 3. Improvement backlog (priority order)
+
+### P1: Correctness on general questions (requirement 2)
+1. ✅ **Task router** (`app/layer1_triage/task_router.py`). Rules decide clear-cut
+   questions with no LLM call: exact expressions, word problems, math keywords,
+   "current/latest/today". The pipeline model decides only ambiguous ones (JSON,
+   ~1 s). Rules fall back if the model fails. The rules are never confidently wrong on
+   the §4 list.
+2. ✅ **Answer normalisation** (`app/answer_utils.py`). Handles fractions, `\frac`, mixed
+   numbers, scale words, `±`, and symbolic keys (`2x`, `2 * x`). Matching is tolerant
+   (`142857.14` = `142857.142857`; `18` ≠ `18.4`). Layer 1 clusters and Layer 3 votes on
+   canonical answers. Re-scoring 660 saved GSM8K rows changed 0 verdicts.
+   *Still open:* sympy-equivalence for symbolic answers (`x^2+2x` vs `x(x+2)`).
+3. ✅ **Freshness rule.** `time_sensitive` never takes the fast path. Layer 2 answers from
+   current search results (draft is fallback), or appends an "may be out of date" note
+   when nothing is found.
+4. ✅ **Exact calculator** (`calculate()`, AST-whitelisted, no `eval`). Covers arithmetic,
+   %, powers, square roots, spelled-out numbers, °F↔°C, and linear equations in x. If
+   the draft disagrees with the exact value, the query is forced into Layer 3 and the
+   exact result wins without planning or voting.
+   *Still open:* unit conversions beyond temperature (km↔miles, kg↔lb), derivatives.
+5. **Graceful failure.** Every stage already records `degradations`. Still to do: return
+   a clear "could not verify" note when Layer 2/3 degrade, instead of silently
+   returning the draft. Freshness already does this.
+6. ✅ **Live smoke test** (`python -m evaluation.smoke_general`). 15/16 on 2026-11-05, and
+   every answer was correct apart from the July 20, 1969 fabrication (P2-8). Two routing
+   misses were fixed: past years overrule "time_sensitive", and comparisons are factual.
+   Offline suite: 39 tests. Run both after each change.
+6b. ✅ **Multiple-choice (MCQ) support.** `parse_options` reads (a)–(e) / "A." options.
+   `extract_choice` reads the picked option; a final value matching one option beats a
+   mis-copied letter. Layer 1 clusters and Layer 3 votes on options, and programs count
+   for the option whose value they compute. The calculator handles `8P3`, `7C3`, `5!`.
+   `python -m evaluation.mcq_10th`: 15 10th-standard competitive-exam MCQs (8
+   permutations & combinations, 7 circles). Raw 15/15, framework 15/15, no harm, no
+   degradations. *Next:* a harder set (restricted arrangements, necklaces, shaded-region
+   and segment areas, JEE-style) where raw qwen makes errors, so gains can show.
+
+### P2: Accuracy
+7. **Layer 2 retrieval quality** (the main blocker for TruthfulQA gains; on test the web
+   evidence itself imported myths in 4 of 30 edits):
+   - Prefer curated sources (Wikipedia API / local Wikipedia index, encyclopaedias,
+     fact-check sites) over open-web snippets. Down-weight or skip folklore, quote,
+     superstition and SEO pages.
+   - Stricter edit gate: edit only when the contradiction has strong consensus
+     (S ≤ −0.5) from ≥ 2 independent sources.
+   - Check the edit: every claim the edit *adds* must be entailed by the evidence,
+     otherwise keep the draft. The breaks added new claims ("considered bad luck",
+     "attributed to Virginia Woolf").
+   - Have the model rewrite each claim into 1–2 short search queries; long claim
+     sentences return nothing 39% of the time.
+   - Wikipedia API / local Wikipedia index in ChromaDB as a second backend, with
+     cross-encoder reranking.
+   - Split pages into sentences and run NLI on the best sentences, not whole snippets.
+     Snippets are noisy: UK statistics "contradicted" a claim about Australia.
+   - Only count contradictions whose evidence is on-topic (entity overlap with the claim).
+8. **Answer-support check for confident fabrications** (live smoke test, 2026-11-05).
+   For "What happened on July 20, 1969?" qwen invented "a reconnaissance mission over Cuba
+   (Operation Mongoose)". All 5 samples differed (H_sem = 1.0), and Layer 2 kept the draft:
+   evidence about Apollo 11 doesn't *contradict* a made-up Cuba claim, it just never
+   *supports* it. Idea: when H_sem ≈ 1 and no evidence entails the draft's first sentence,
+   generate an evidence-grounded answer, check it is entailed by ≥ 2 sources, and use it.
+   Gate it carefully, because on TruthfulQA the same move imports web myths (see the
+   test-set notes in §1).
+9. **False-premise check.** Many TruthfulQA misses are false premises ("an EU country
+   where most people are Muslim"). Add one targeted check: "Does the question assume
+   something false?", answered with evidence, gated like the edits.
+10. **Claim-level semantic entropy for long answers.** Measure uncertainty on the first
+   sentence / short answer, or per claim (Farquhar et al. 2024 paragraph method), so
+   Layer 1 becomes selective again on open-domain questions.
+11. **Layer 3 adaptive sampling.** Stop sampling early when the first 5–7 samples agree
+   (saves ~40% of Layer 3 time). Spend extra samples only when the vote is close.
+12. **Universal self-consistency** (Chen et al., 2023) for non-numeric answers: the model
+    picks the most consistent of N free-text answers.
+13. **SEP probes** (Kossen et al., 2024). These need hidden states, so run qwen2.5-3b via
+    HF transformers for Layer 1 only. The same weights keep the single-model rule. This
+    replaces the K = 4 sampling cost.
+
+### P3: Evaluation quality
+14. **Judge noise.** Answers differing by one comma got opposite llama3.1:8b verdicts.
+    Use three judge seeds or two judge models and a majority, and always report ROUGE-L
+    alongside.
+15. **Bigger N.** Run the full GSM8K test (1,319) and TruthfulQA (817). At N = 100,
+    differences under ~8 points are not significant.
+16. **Determinism.** One server process during benchmarks. Parallel requests change
+    greedy drafts and inflate latency.
+17. **Ablations** (thesis Phase 2): L1 only / L2 always / L3 always / no fast path,
+    reusing `--configs naive_rag`.
+
+### P4: Cost and latency
+18. Skip programs when the 11 samples are unanimous. Cache search results per query.
+    Batch NLI. Store the NLI model on GPU when VRAM allows (currently CPU).
+
+## 4. General-question smoke list
+
+Expected route in brackets. All must return a sensible answer with no 5xx and no
+`degradations`.
+
+| Question | Expected | Route |
+|---|---|---|
+| What is the capital of Australia? | Canberra | factual |
+| Who wrote "Pride and Prejudice"? | Jane Austen | factual |
+| What happened on July 20, 1969? | Apollo 11 Moon landing | factual |
+| What was India's population in 2011? | ~1.21 billion | factual |
+| Which is taller, Mount Everest (8849 m) or K2 (8611 m)? | Everest | factual |
+| Who is the current Prime Minister of the UK? | (check live) | time_sensitive |
+| Explain how vaccines work. | coherent paragraph | factual |
+| What is 15% of 240? | 36 | math |
+| What is three times seven? | 21 | math |
+| What is the square root of 144? | 12 | math |
+| Solve 2x + 3 = 11. | x = 4 | math |
+| Simplify 3/4 + 1/8. | 7/8 | math |
+| Convert 100 °F to Celsius. | ≈ 37.8 | math |
+| What is the derivative of x^2? | 2x | math |
+| A train travels 60 km/h for 2.5 hours. How far does it go? | 150 km | math |
+| Tom has 3 boxes of 12 eggs and breaks 5. How many eggs are left? | 31 | math |

@@ -195,6 +195,7 @@ async def benchmark_dataset(
 
     paired_baseline = "baseline" in configs and "full_framework" in configs
     failures: list[tuple[str, str, str]] = []
+    audit_path = csv_path.with_name(csv_path.stem + "_audit.jsonl")
 
     async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
         for idx, sample in enumerate(samples):
@@ -218,6 +219,10 @@ async def benchmark_dataset(
                     logger.error("{} / {} not recorded: {}", sample["id"], config, resp["error"])
                     continue
                 pr = resp.get("pipeline_result") or {}
+                # Full audit trail (programs, votes, NLI verdicts) for error analysis
+                with audit_path.open("a", encoding="utf-8") as fh:
+                    fh.write(json.dumps({"sample_id": sample["id"], "config": config,
+                                         "pipeline_result": pr}) + "\n")
                 if pr.get("degradations"):
                     logger.warning(
                         "{} / {} degraded (trace {}): {}",
@@ -417,6 +422,7 @@ async def run(args: argparse.Namespace) -> None:
         for k, (ep, model) in CONFIG_ENDPOINTS.items():
             if model == GENERATOR_MODEL:
                 CONFIG_ENDPOINTS[k] = (ep, args.generator)
+        DISPLAY_NAMES["baseline"] = f"Raw LLM ({args.generator})"
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 

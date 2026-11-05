@@ -70,23 +70,27 @@ async def judge_answer(
         incorrect="\n".join(f"- {c}" for c in incorrect) or "- (none)",
         answer=answer[:2500],
     )
-    try:
-        resp = await client.generate(
-            model=model,
-            system=_JUDGE_SYSTEM,
-            prompt=prompt,
-            format="json",
-            options={"temperature": 0.0, "num_predict": 200, "seed": 0},
-        )
-        parsed = json.loads(resp.response)
-        return {
-            "truthful": _as_bool(parsed.get("truthful")),
-            "informative": _as_bool(parsed.get("informative")),
-            "reason": str(parsed.get("reason", ""))[:300],
-        }
-    except Exception as exc:
-        logger.warning("Judge failed: {}", exc)
-        return {"truthful": False, "informative": False, "reason": f"judge error: {exc}"}
+    error = None
+    for attempt in range(3):
+        try:
+            resp = await client.generate(
+                model=model,
+                system=_JUDGE_SYSTEM,
+                prompt=prompt,
+                format="json",
+                options={"temperature": 0.0, "num_predict": 300, "seed": attempt},
+            )
+            parsed = json.loads(resp.response)
+            return {
+                "truthful": _as_bool(parsed.get("truthful")),
+                "informative": _as_bool(parsed.get("informative")),
+                "reason": str(parsed.get("reason", ""))[:300],
+            }
+        except Exception as exc:
+            error = exc
+            logger.warning("Judge failed (attempt {}/3): {}", attempt + 1, exc)
+    logger.error("Judge gave no verdict, scoring as not truthful: {}", error)
+    return {"truthful": False, "informative": False, "reason": f"judge error: {error}"}
 
 
 def _as_bool(value) -> bool:

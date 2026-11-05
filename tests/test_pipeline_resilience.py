@@ -168,6 +168,81 @@ class ProgramVerifierTests(unittest.TestCase):
         verifier = ProgramVerifier(ollama_client=None)
         self.assertEqual(asyncio.run(verifier._run(self.CODE)), ("18", "ok"))
 
+    def setUp(self):
+        self._weighting = settings.program_vote_weighting
+        settings.program_vote_weighting = "program_primary"
+
+    def tearDown(self):
+        settings.program_vote_weighting = self._weighting
+
+    def test_sample_primary_majority_wins(self):
+        settings.program_vote_weighting = "sample_primary"
+        progs = ["def solution():\n    return 7\n"] * 4  # 4 programs * 0.5 = 2.0
+        out, _, judgment = self._verify_with(
+            progs, "Final answer: 5", ["Final answer: 5", "Final answer: 5"],
+            "Tom has 2 and 3 apples. How many?",
+        )  # 5 has 3 sample votes > 2.0
+        self.assertIn("Final answer: 5", out)
+        self.assertTrue(judgment.is_consistent)
+
+    def test_sample_primary_programs_break_sample_split(self):
+        settings.program_vote_weighting = "sample_primary"
+        progs = ["def solution():\n    return 7\n"] * 2
+        out, _, _ = self._verify_with(
+            progs, "Final answer: 5", ["Final answer: 7", "Final answer: 7"],
+            "Tom has 2 and 3 apples. How many?",
+        )  # 7: 2 + 1.0 beats 5: 1
+        self.assertTrue(out.endswith("Final answer: 7"))
+
+    def _verify_with(self, programs: list[str], draft: str, samples: list[str], query: str):
+        verifier = ProgramVerifier(ollama_client=None, num_programs=len(programs))
+        it = iter(programs)
+
+        async def fake_write(*_a, **_k):
+            return next(it)
+
+        async def fake_repair(_q, code, _err, seed):
+            return code
+
+        verifier._write_program = fake_write
+        verifier._repair = fake_repair
+        return asyncio.run(verifier.verify(query, "plan", [draft, *samples], draft))
+
+    def test_single_program_cannot_override_draft(self):
+        progs = ["def solution():\n    return 7\n"] + ["def solution():\n    return x\n"] * 4
+        out, _, judgment = self._verify_with(
+            progs, "Final answer: 5", ["Final answer: 6"], "Tom has 2 and 3 apples. How many?"
+        )
+        self.assertIn("Final answer: 5", out)
+        self.assertTrue(judgment.is_consistent)
+
+    def test_two_programs_override_draft(self):
+        progs = ["def solution():\n    return 7\n"] * 2 + ["def solution():\n    return x\n"] * 3
+        out, _, judgment = self._verify_with(
+            progs, "Final answer: 5", [], "Tom has 2 and 3 apples. How many?"
+        )
+        self.assertTrue(out.endswith("Final answer: 7"))
+        self.assertFalse(judgment.is_consistent)
+
+    def test_tie_keeps_draft(self):
+        # 72: 3 programs + 0 samples = 3; 144 (draft): 1 program + draft + 1 sample = 3
+        progs = ["def solution():\n    return 72\n"] * 3 + ["def solution():\n    return 144\n"]
+        out, _, judgment = self._verify_with(
+            progs, "Final answer: 144", ["Final answer: 144"], "He has 12 boxes of 12 eggs. How many?"
+        )
+        self.assertIn("Final answer: 144", out)
+        self.assertTrue(judgment.is_consistent)
+
+    def test_negative_program_answer_rejected(self):
+        progs = ["def solution():\n    return -17500\n"] * 3
+        out, traces, _ = self._verify_with(
+            progs, "Final answer: 525", [], "Andy wants to lose 30 lbs in 200 days. How many?"
+        )
+        self.assertIn("Final answer: 525", out)
+        program_traces = [t for t in traces if t.startswith("[Program")]
+        self.assertEqual(len(program_traces), 3)
+        self.assertTrue(all("implausible negative" in t for t in program_traces))
+
     @unittest.skipUnless(sys.platform == "win32", "Selector loop limitation is Windows-only")
     def test_runs_on_windows_selector_loop(self):
         """Root cause #4: uvicorn --reload on Windows uses SelectorEventLoop, where

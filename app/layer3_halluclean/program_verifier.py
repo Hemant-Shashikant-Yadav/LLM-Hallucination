@@ -27,7 +27,17 @@ from collections import Counter
 
 from loguru import logger
 
-from app.answer_utils import extract_final_number, normalize_number
+from app.answer_utils import (
+    Calculation,
+    canonicalize,
+    extract_choice,
+    extract_final_answer,
+    extract_final_number,
+    normalize_number,
+    numbers_match,
+    parse_options,
+)
+from app.config import settings
 from app.llm_clients.ollama_client import OllamaClient
 from app.models.schemas import JudgmentResult
 from app.telemetry import record_degradation
@@ -37,17 +47,79 @@ _PROGRAM_SYSTEM = """You solve math word problems by writing a short Python prog
 Rules:
 1. Define a function `solution()` that returns the final numeric answer.
 2. Use one clearly named variable per quantity in the problem, with a comment.
-3. Follow the given plan step by step. Use only numbers stated in the problem.
-4. Use plain Python arithmetic only (the `math` module is allowed). No input(), no printing, no files.
-5. Return a number, not a string.
+3. Compute every intermediate quantity explicitly. Use only numbers stated in the problem.
+4. Return exactly what the question asks for (e.g. the remaining amount, not the total).
+5. Use plain Python arithmetic only (the `math` module is allowed). No input(), no printing, no files.
+6. Return a number, not a string.
 Respond with the Python code only, inside a ```python code block."""
 
-_PROGRAM_PROMPT = """PROBLEM: {query}
+# Few-shot examples in the style of Program-Aided LMs (Gao et al., 2023). Written for
+# this project — not taken from the GSM8K test set — so they cannot leak test answers.
+_PROGRAM_EXAMPLES = '''PROBLEM: A bakery bakes 48 muffins. It sells 3/4 of them in the morning and then bakes 10 more. How many muffins does it have now?
 
-PLAN:
+```python
+def solution():
+    muffins_baked = 48  # muffins baked at first
+    fraction_sold = 3 / 4  # sold in the morning
+    muffins_sold = muffins_baked * fraction_sold
+    muffins_left = muffins_baked - muffins_sold
+    extra_baked = 10  # baked afterwards
+    return muffins_left + extra_baked
+```
+
+PROBLEM: Tom works 6 hours a day for 5 days and earns $12 per hour. He spends $45 on groceries and saves half of what is left. How much does he save?
+
+```python
+def solution():
+    hours_per_day = 6
+    days = 5
+    pay_per_hour = 12  # dollars
+    earnings = hours_per_day * days * pay_per_hour
+    groceries = 45  # dollars spent
+    left = earnings - groceries
+    savings = left / 2  # saves half of the rest
+    return savings
+```
+
+PROBLEM: A store has 120 shirts. 25% of them are red and 1/3 of the remaining shirts are blue. The rest are white. How many white shirts are there?
+
+```python
+def solution():
+    total_shirts = 120
+    red = total_shirts * 25 / 100
+    remaining = total_shirts - red
+    blue = remaining / 3  # 1/3 of the remaining, not of the total
+    white = remaining - blue
+    return white
+```'''
+
+_PROGRAM_PROMPT = """{examples}
+
+PROBLEM: {query}
+
+HINT (solution plan, may be imperfect):
 {plan}
 
 Write the program."""
+
+_REPAIR_PROMPT = """PROBLEM: {query}
+
+This program fails with the error below. Fix the error and return the corrected
+complete program. Keep the same approach unless it is wrong.
+
+```python
+{code}
+```
+
+ERROR: {error}"""
+
+_NEGATIVE_CUES = re.compile(
+    r"\b(negative|below zero|minus|debt|owes?|temperature|degrees)\b",
+    re.IGNORECASE,
+)
+
+# Sandbox rejections that must not be "repaired" into something that gets past the check
+_UNSAFE_PREFIXES = ("rejected: disallowed", "rejected: blocked", "rejected: private")
 
 _ALLOWED_IMPORTS = {"math", "fractions", "decimal"}
 _BLOCKED_NAMES = {
@@ -63,6 +135,12 @@ print(repr(float(_r)))
 """
 
 
+def _option_for(value: str | None, options: dict[str, str]) -> str | None:
+    """The single option whose numeric value matches, if any."""
+    hits = [k for k, text in options.items() if numbers_match(extract_final_number(text), value)]
+    return hits[0] if len(hits) == 1 else None
+
+
 def _is_integer(value: str) -> bool:
     try:
         return float(value).is_integer()
@@ -73,10 +151,10 @@ def _is_integer(value: str) -> bool:
 class ProgramVerifier:
     """Program-verified self-consistency for quantitative queries."""
 
-    def __init__(self, ollama_client: OllamaClient, num_programs: int = 3,
+    def __init__(self, ollama_client: OllamaClient, num_programs: int | None = None,
                  timeout_s: float = 5.0) -> None:
         self._client = ollama_client
-        self._num_programs = num_programs
+        self._num_programs = num_programs or settings.program_vote_num_programs
         self._timeout_s = timeout_s
         logger.info("ProgramVerifier initialized | programs={}", num_programs)
 
@@ -86,13 +164,31 @@ class ProgramVerifier:
         plan_text: str,
         candidates: list[str],
         draft: str,
+        exact: Calculation | None = None,
     ) -> tuple[str, list[str], JudgmentResult]:
-        programs = await asyncio.gather(
+        if exact is not None:
+            return self._verify_exact(draft, exact, parse_options(query))
+
+        programs = list(await asyncio.gather(
             *(self._write_program(query, plan_text, seed=i) for i in range(self._num_programs))
-        )
-        results = await asyncio.gather(*(self._run(code) for code in programs))
+        ))
+        results = list(await asyncio.gather(*(self._run(code) for code in programs)))
+
+        # Self-debug round (Chen et al., 2024): programs that crashed or failed to
+        # parse get the interpreter's error back once. Unsafe or empty programs don't.
+        broken = [i for i, (ans, err) in enumerate(results)
+                  if ans is None and programs[i] and not err.startswith(_UNSAFE_PREFIXES)]
+        if broken:
+            repaired = await asyncio.gather(
+                *(self._repair(query, programs[i], results[i][1], seed=i) for i in broken)
+            )
+            rerun = await asyncio.gather(*(self._run(code) for code in repaired))
+            for i, code, res in zip(broken, repaired, rerun):
+                logger.debug("Program {} repaired: {} → {}", i + 1, results[i][1], res)
+                programs[i], results[i] = code, res
 
         integer_task = not re.search(r"\d\.\d", query)
+        negatives_possible = bool(_NEGATIVE_CUES.search(query))
         traces: list[str] = []
         program_answers: list[str] = []
         for i, (code, (ans, err)) in enumerate(zip(programs, results), start=1):
@@ -100,21 +196,72 @@ class ProgramVerifier:
                 # Plausibility check: a problem stated in whole numbers that yields a
                 # fractional count is almost always a mis-modelled program.
                 ans, err = None, f"implausible non-integer answer {ans}"
+            elif ans is not None and float(ans) < 0 and not negatives_possible:
+                # Word-problem quantities (money, items, time) are non-negative; a
+                # negative result means a subtraction was modelled backwards.
+                ans, err = None, f"implausible negative answer {ans}"
             traces.append(f"[Program {i}] result={ans if ans is not None else err}\n{code}")
             if ans is not None:
                 program_answers.append(ans)
 
-        nl_answers = [extract_final_number(c) for c in candidates]
-        draft_answer = extract_final_number(draft)
+        # Compare everything on canonical answers so '0.875' == '7/8' and
+        # '142857.14' == '142857.142857' when voting
+        options = parse_options(query)
+        if options:
+            # Multiple choice: vote on the option picked. A program counts for the
+            # option whose value it computed; one matching no option is discarded.
+            draft_answer = extract_choice(draft, options)
+            nl_answers = [extract_choice(c, options) for c in candidates]
+            program_answers = [k for k in (_option_for(a, options) for a in program_answers) if k]
+        else:
+            raw_nl = [extract_final_answer(c) for c in candidates]
+            n_prog = len(program_answers)
+            canon = canonicalize([extract_final_answer(draft), *program_answers, *raw_nl])
+            draft_answer = canon[0]
+            program_answers = [a for a in canon[1:1 + n_prog] if a is not None]
+            nl_answers = canon[1 + n_prog:]
+        final_line = (lambda k: f"({k}) {options[k]}") if options else (lambda k: k)
         prog_votes = Counter(program_answers)
         nl_votes = Counter(a for a in nl_answers if a is not None)
+        traces.insert(0, f"[Samples] draft={draft_answer} answers={nl_answers}")
 
-        if prog_votes:
+        if settings.program_vote_weighting == "sample_primary" and nl_votes:
+            # Self-consistency over reasoning samples is the primary vote (Wang et al.,
+            # 2023); programs add weight w each. Programs from one model share its
+            # misreadings, so on dev their consensus was right only ~half the time
+            # it disagreed with the draft — too unreliable to dominate.
+            w = settings.program_vote_weight
+            scores = {
+                a: nl_votes.get(a, 0) + w * prog_votes.get(a, 0)
+                for a in set(nl_votes) | set(prog_votes)
+            }
+            final, top = max(
+                scores.items(),
+                key=lambda kv: (kv[1], kv[0] == draft_answer, prog_votes.get(kv[0], 0)),
+            )
+            total = sum(scores.values())
+            source = f"sample-primary vote (program weight {w})"
+        elif prog_votes:
             # Natural-language answers only count when a program confirms them
             scores = {a: prog_votes[a] + nl_votes.get(a, 0) for a in prog_votes}
-            final, top = max(scores.items(), key=lambda kv: (kv[1], prog_votes[kv[0]]))
+            # Ties keep the draft (do-no-harm), then favour more program agreement
+            final, top = max(
+                scores.items(),
+                key=lambda kv: (kv[1], kv[0] == draft_answer, prog_votes[kv[0]]),
+            )
             total = sum(scores.values())
             source = "program-verified vote"
+            # Do-no-harm: one stray program with no agreeing sample is too weak to
+            # overturn the draft. Overriding needs 2 programs, or 1 program + 1 sample.
+            weak = prog_votes[final] < 2 and nl_votes.get(final, 0) < 1
+            if final != draft_answer and weak and draft_answer is not None:
+                logger.info(
+                    "Program vote for {} too weak (programs={}, samples=0); keeping draft {}",
+                    final, prog_votes[final], draft_answer,
+                )
+                final, top = draft_answer, nl_votes.get(draft_answer, 0)
+                total = max(total, top)
+                source = "draft kept (weak program support)"
         elif nl_votes:
             record_degradation(
                 "layer3.program_vote",
@@ -148,12 +295,47 @@ class ProgramVerifier:
             return draft, traces, judgment
         for cand, ans in zip(candidates, nl_answers):
             if ans == final and cand.strip():
-                return f"{cand.strip()}\n\nFinal answer: {final}", traces, judgment
-        code = next((c for c, (a, _) in zip(programs, results) if a == final), "")
+                return f"{cand.strip()}\n\nFinal answer: {final_line(final)}", traces, judgment
+        code = next(
+            (c for c, (a, _) in zip(programs, results)
+             if numbers_match(a, final) or (options and _option_for(a, options) == final)),
+            "",
+        )
         return (
-            f"Program-verified solution:\n```python\n{code}\n```\nFinal answer: {final}",
+            f"Program-verified solution:\n```python\n{code}\n```\nFinal answer: {final_line(final)}",
             traces,
             judgment,
+        )
+
+    @staticmethod
+    def _verify_exact(
+        draft: str, exact: Calculation, options: dict[str, str] | None = None,
+    ) -> tuple[str, list[str], JudgmentResult]:
+        """The query is plain arithmetic: the exact calculator result is decisive."""
+        trace = f"[Calculator] {exact.expression} = {exact.display}"
+        exact_option = _option_for(exact.value, options) if options else None
+        if exact_option:
+            draft_answer = extract_choice(draft, options)
+            agrees = draft_answer == exact_option
+        else:
+            draft_answer = extract_final_answer(draft)
+            agrees = numbers_match(draft_answer, exact.value)
+        if agrees:
+            logger.info("Exact calculation confirms draft ({})", exact.display)
+            return draft, [trace], JudgmentResult(is_consistent=True, confidence=1.0, violations=[])
+        logger.info("Exact calculation overrides draft | draft={} | exact={}", draft_answer, exact.display)
+        answer = (
+            f"({exact_option}) {options[exact_option]}" if exact_option
+            else exact.display.removeprefix("x = ")
+        )
+        return (
+            f"{exact.display}\n\nFinal answer: {answer}",
+            [trace],
+            JudgmentResult(
+                is_consistent=False,
+                confidence=1.0,
+                violations=[f"Draft answer {draft_answer} differs from exact result {exact.display}"],
+            ),
         )
 
     # -------------------------------------------------------------------------
@@ -161,7 +343,9 @@ class ProgramVerifier:
     async def _write_program(self, query: str, plan_text: str, seed: int) -> str:
         try:
             res = await self._client.generate(
-                prompt=_PROGRAM_PROMPT.format(query=query, plan=plan_text),
+                prompt=_PROGRAM_PROMPT.format(
+                    examples=_PROGRAM_EXAMPLES, query=query, plan=plan_text
+                ),
                 system=_PROGRAM_SYSTEM,
                 temperature=0.0 if seed == 0 else 0.5,
                 max_tokens=600,
@@ -170,8 +354,26 @@ class ProgramVerifier:
         except Exception as exc:
             record_degradation("layer3.program_gen", f"program {seed} generation failed: {exc}")
             return ""
-        match = re.search(r"```(?:python)?\s*\n(.*?)```", res.text, re.DOTALL)
-        return (match.group(1) if match else res.text).strip()
+        return self._extract_code(res.text)
+
+    async def _repair(self, query: str, code: str, error: str, seed: int) -> str:
+        try:
+            res = await self._client.generate(
+                prompt=_REPAIR_PROMPT.format(query=query, code=code, error=error),
+                system=_PROGRAM_SYSTEM,
+                temperature=0.0,
+                max_tokens=600,
+                seed=seed,
+            )
+        except Exception as exc:
+            record_degradation("layer3.program_repair", f"repair of program {seed} failed: {exc}")
+            return code
+        return self._extract_code(res.text)
+
+    @staticmethod
+    def _extract_code(text: str) -> str:
+        match = re.search(r"```(?:python)?\s*\n(.*?)```", text, re.DOTALL)
+        return (match.group(1) if match else text).strip()
 
     async def _run(self, code: str) -> tuple[str | None, str]:
         if "def solution" not in code:

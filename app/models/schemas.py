@@ -379,6 +379,9 @@ class PipelineResult(BaseModel):
         description="True when Layer 2/3 replaced the draft with a different answer",
     )
     trace_id: str = Field(default="", description="Correlates this result with its log lines")
+    task_type: str = Field(
+        default="", description="Router decision: math | factual | time_sensitive ('' if forced)"
+    )
     degradations: list[str] = Field(
         default_factory=list,
         description="Stages that fell back instead of running normally ('stage: reason')",
