@@ -1,0 +1,3 @@
+dataset,config,n,judge_truthful_pct,judge_truthful_ci95,truthful_informative_pct,truthful_informative_ci95,rouge_acc_pct,rouge_acc_ci95,avg_latency_s,avg_tokens,judge_truthful_delta_vs_baseline,judge_truthful_mcnemar_p,truthful_informative_delta_vs_baseline,truthful_informative_mcnemar_p,rouge_acc_delta_vs_baseline,rouge_acc_mcnemar_p
+truthfulqa,baseline,40,77.5,"[62.5, 90.0]",77.5,"[62.5, 90.0]",47.5,"[32.5, 62.5]",7.47,263.8,,,,,,
+truthfulqa,full_framework,40,77.5,"[62.5, 90.0]",77.5,"[62.5, 90.0]",47.5,"[32.5, 62.5]",73.64,2120.0,0.0,1.0,0.0,1.0,0.0,1.0
