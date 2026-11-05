@@ -25,6 +25,7 @@ from app.models.schemas import (
     JudgmentResult,
     Layer3Result,
 )
+from app.telemetry import record_degradation
 
 
 # =============================================================================
@@ -170,7 +171,7 @@ class HalluCleanJudge:
             return self._parse_judgment(result.text)
 
         except Exception as exc:
-            logger.error("Judgment failed: {}", exc)
+            record_degradation("layer3.judge", f"judge call failed, solution passed unchecked: {exc}")
             return JudgmentResult(
                 is_consistent=True,
                 violations=[],
@@ -187,12 +188,14 @@ class HalluCleanJudge:
                 try:
                     parsed = json.loads(match.group())
                 except json.JSONDecodeError:
+                    record_degradation("layer3.judge", "unparseable judge JSON, solution passed unchecked")
                     return JudgmentResult(
                         is_consistent=True,
                         violations=[],
                         confidence=0.5,
                     )
             else:
+                record_degradation("layer3.judge", "no JSON in judge output, solution passed unchecked")
                 return JudgmentResult(
                     is_consistent=True,
                     violations=[],
@@ -279,7 +282,7 @@ class HalluCleanJudge:
             return result.text.strip()
 
         except Exception as exc:
-            logger.error("Refinement failed: {}", exc)
+            record_degradation("layer3.refine", f"refinement failed: {exc}")
             # Fallback: concatenate the last step outputs
             if reasoning_traces:
                 return reasoning_traces[-1]

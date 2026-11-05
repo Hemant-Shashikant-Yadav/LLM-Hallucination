@@ -105,6 +105,15 @@ class FrameworkSettings(BaseSettings):
         ge=32,
         description="Max tokens per semantic entropy sample.",
     )
+    se_min_samples: int = Field(
+        default=2,
+        ge=1,
+        description=(
+            "Minimum successful samples needed to trust H_sem. With fewer, entropy "
+            "over (draft + samples) collapses towards 0 and would wrongly mark the "
+            "query SAFE, so triage escalates instead."
+        ),
+    )
     probe_model_name: str = Field(
         default="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
         description=(
@@ -224,7 +233,37 @@ class FrameworkSettings(BaseSettings):
     ollama_timeout: float = Field(
         default=600.0,
         ge=5.0,
-        description="Timeout in seconds for Ollama API calls.",
+        description=(
+            "Timeout in seconds for one Ollama call. Measured from when the request "
+            "is sent, after the client-side concurrency gate (queue time excluded)."
+        ),
+    )
+    ollama_num_ctx: int = Field(
+        default=4096,
+        ge=512,
+        description=(
+            "Context window (prompt + completion) sent as num_ctx on every call. "
+            "Ollama silently drops the start of prompts that exceed it. "
+            "llama2:7b supports at most 4096."
+        ),
+    )
+    ollama_max_concurrency: int = Field(
+        default=1,
+        ge=1,
+        description=(
+            "Max in-flight Ollama requests from this process. Match the server's "
+            "OLLAMA_NUM_PARALLEL; extra requests otherwise queue on the server and "
+            "burn their HTTP timeout while waiting."
+        ),
+    )
+    ollama_max_retries: int = Field(
+        default=2,
+        ge=0,
+        description="Retries for transient Ollama failures (5xx, runner crash, connection reset).",
+    )
+    ollama_keep_alive: str = Field(
+        default="10m",
+        description="How long Ollama keeps a model loaded after a call.",
     )
 
     # -------------------------------------------------------------------------

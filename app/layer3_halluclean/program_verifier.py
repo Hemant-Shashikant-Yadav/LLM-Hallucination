@@ -21,6 +21,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import re
+import subprocess
 import sys
 from collections import Counter
 
@@ -29,6 +30,7 @@ from loguru import logger
 from app.answer_utils import extract_final_number, normalize_number
 from app.llm_clients.ollama_client import OllamaClient
 from app.models.schemas import JudgmentResult
+from app.telemetry import record_degradation
 
 _PROGRAM_SYSTEM = """You solve math word problems by writing a short Python program.
 
@@ -114,6 +116,11 @@ class ProgramVerifier:
             total = sum(scores.values())
             source = "program-verified vote"
         elif nl_votes:
+            record_degradation(
+                "layer3.program_vote",
+                f"no program produced an answer ({[t.split(chr(10))[0] for t in traces]}); "
+                "falling back to unverified self-consistency vote",
+            )
             final, top = nl_votes.most_common(1)[0]
             total = sum(nl_votes.values())
             source = "self-consistency vote (no program executed)"
@@ -161,7 +168,7 @@ class ProgramVerifier:
                 seed=seed,
             )
         except Exception as exc:
-            logger.warning("Program generation failed: {}", exc)
+            record_degradation("layer3.program_gen", f"program {seed} generation failed: {exc}")
             return ""
         match = re.search(r"```(?:python)?\s*\n(.*?)```", res.text, re.DOTALL)
         return (match.group(1) if match else res.text).strip()
@@ -172,18 +179,22 @@ class ProgramVerifier:
         problem = self._unsafe_reason(code)
         if problem:
             return None, f"rejected: {problem}"
+        # subprocess.run in a worker thread rather than asyncio.create_subprocess_exec:
+        # the latter raises NotImplementedError on Windows SelectorEventLoop, which
+        # uvicorn uses with --reload / workers, and that would silently fail every program.
         try:
-            proc = await asyncio.create_subprocess_exec(
-                sys.executable, "-I", "-c", _RUNNER.format(code=code),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            proc = await asyncio.to_thread(
+                subprocess.run,
+                [sys.executable, "-I", "-c", _RUNNER.format(code=code)],
+                capture_output=True,
+                timeout=self._timeout_s,
             )
-            out, err = await asyncio.wait_for(proc.communicate(), timeout=self._timeout_s)
-        except asyncio.TimeoutError:
-            proc.kill()
+        except subprocess.TimeoutExpired:
             return None, "timeout"
         except Exception as exc:
+            record_degradation("layer3.program_exec", f"sandbox could not start: {exc}")
             return None, f"exec error: {exc}"
+        out, err = proc.stdout, proc.stderr
         if proc.returncode != 0:
             lines = err.decode(errors="ignore").strip().splitlines()
             return None, lines[-1] if lines else "runtime error"

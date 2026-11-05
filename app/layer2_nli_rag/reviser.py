@@ -25,6 +25,7 @@ from loguru import logger
 
 from app.llm_clients.ollama_client import OllamaClient
 from app.models.schemas import NLILabel, NLIResult, SearchResult
+from app.telemetry import record_degradation
 
 
 _REVISER_SYSTEM = """You are a meticulous fact-checker. You rewrite a draft answer so that 
@@ -136,7 +137,7 @@ class EvidenceReviser:
             )
             revised = result.text.strip() or draft
         except Exception as exc:
-            logger.error("Evidence revision failed: {}", exc)
+            record_degradation("layer2.revise", f"revision failed, returning draft: {exc}")
             return draft
 
         return await self._chain_of_verification(question, revised)
@@ -153,7 +154,7 @@ class EvidenceReviser:
             parsed = json.loads(plan.text)
             questions = [q for q in parsed.get("questions", []) if isinstance(q, str) and q.strip()][:3]
         except Exception as exc:
-            logger.warning("CoVe planning failed, keeping revision: {}", exc)
+            record_degradation("layer2.cove", f"CoVe planning failed, keeping revision: {exc}")
             return answer
         if not questions:
             return answer
@@ -176,5 +177,5 @@ class EvidenceReviser:
             logger.info("CoVe | checks={}", len(questions))
             return final.text.strip() or answer
         except Exception as exc:
-            logger.warning("CoVe verification failed, keeping revision: {}", exc)
+            record_degradation("layer2.cove", f"CoVe verification failed, keeping revision: {exc}")
             return answer

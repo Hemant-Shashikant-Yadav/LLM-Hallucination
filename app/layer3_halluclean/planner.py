@@ -16,6 +16,7 @@ from loguru import logger
 from app.config import settings
 from app.llm_clients.ollama_client import OllamaClient
 from app.models.schemas import ExecutionGraph, PlanNode
+from app.telemetry import record_degradation
 
 
 # System prompt for plan generation
@@ -141,7 +142,7 @@ class HalluCleanPlanner:
 
     def _fallback_plan(self, query: str) -> ExecutionGraph:
         """Generate a simple 3-step fallback plan."""
-        logger.warning("Using fallback plan for query: {:.50}...", query)
+        record_degradation("layer3.plan", "planner output unusable; using generic 3-step plan")
 
         steps = [
             PlanNode(

@@ -16,6 +16,7 @@ from loguru import logger
 
 from app.llm_clients.ollama_client import OllamaClient
 from app.models.schemas import AtomicProposition
+from app.telemetry import record_degradation
 
 
 # System prompt for AP extraction
@@ -29,16 +30,19 @@ Rules:
 4. Do NOT include opinions, subjective assessments, or meta-statements.
 5. Preserve numerical values, dates, and proper nouns exactly.
 
-Respond with a JSON array of strings, each being one Atomic Proposition.
-Example output: ["The Eiffel Tower is located in Paris.", "The Eiffel Tower was completed in 1889."]
+Respond with a JSON object with one key, "propositions", holding a list of strings.
+Example output: {"propositions": ["The Eiffel Tower is located in Paris.", "The Eiffel Tower was completed in 1889."]}
 """
 
+# Ollama's format="json" grammar only admits a JSON object at the top level, so the
+# prompt must ask for {"propositions": [...]} — asking for a bare array made the
+# model invent its own wrapper keys (or a dict of strings) and hit the fallback.
 _AP_EXTRACTION_PROMPT = """Extract all Atomic Propositions from the following text.
 
 TEXT:
 {text}
 
-Return ONLY a JSON array of strings. No explanation or preamble."""
+Return ONLY the JSON object {{"propositions": [...]}}. No explanation or preamble."""
 
 
 class PropositionParser:
@@ -119,9 +123,15 @@ class PropositionParser:
             else:
                 return self._fallback_sentence_split(source_text)
 
-        # JSON mode often wraps the array: {"propositions": [...]}
+        # JSON mode returns an object: {"propositions": [...]}, or occasionally
+        # another wrapper key / a flat {"AP1": "...", "AP2": "..."} mapping
         if isinstance(parsed, dict):
-            parsed = next((v for v in parsed.values() if isinstance(v, list)), None)
+            if isinstance(parsed.get("propositions"), list):
+                parsed = parsed["propositions"]
+            elif any(isinstance(v, list) for v in parsed.values()):
+                parsed = next(v for v in parsed.values() if isinstance(v, list))
+            elif parsed and all(isinstance(v, str) for v in parsed.values()):
+                parsed = list(parsed.values())
 
         if not isinstance(parsed, list):
             return self._fallback_sentence_split(source_text)
@@ -172,7 +182,8 @@ class PropositionParser:
                     )
                 )
 
-        logger.warning(
-            "Used fallback sentence splitting: {} propositions", len(propositions)
+        record_degradation(
+            "layer2.ap_extraction",
+            f"LLM extraction unusable; sentence-split into {len(propositions)} propositions",
         )
         return propositions

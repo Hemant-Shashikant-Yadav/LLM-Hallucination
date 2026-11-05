@@ -11,12 +11,21 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
-from typing import Any, AsyncIterator
+from typing import Any
 
+import httpx
 from loguru import logger
 from ollama import AsyncClient, ResponseError
 
 from app.config import settings
+
+
+class ModelUnavailableError(RuntimeError):
+    """The requested model is not pulled on the Ollama server."""
+
+
+def _normalize_model(name: str) -> str:
+    return name if ":" in name else f"{name}:latest"
 
 
 # Per-request token accumulator. The router opens a meter at the start of a
@@ -42,6 +51,25 @@ def _record_tokens(result: "GenerationResult") -> "GenerationResult":
     return result
 
 
+# One gate per (event loop, server): Ollama serves OLLAMA_NUM_PARALLEL requests at a
+# time and queues the rest server-side, where queued requests burn their HTTP timeout.
+# Waiting here instead means the timeout only measures actual generation.
+_gates: dict[tuple[int, str], asyncio.Semaphore] = {}
+
+
+def _gate(base_url: str) -> asyncio.Semaphore:
+    key = (id(asyncio.get_running_loop()), base_url)
+    if key not in _gates:
+        _gates[key] = asyncio.Semaphore(settings.ollama_max_concurrency)
+    return _gates[key]
+
+
+# Transient failures worth retrying: runner crashed / out of VRAM while loading
+# (HTTP 5xx), or the connection dropped. Timeouts are NOT retried — they already
+# cost ollama_timeout seconds and a retry would double that.
+_TRANSIENT_NETWORK = (httpx.ConnectError, httpx.RemoteProtocolError, httpx.ReadError)
+
+
 class OllamaClient:
     """
     High-level async wrapper around the Ollama Python SDK.
@@ -62,45 +90,132 @@ class OllamaClient:
         self._client = AsyncClient(host=self._base_url, timeout=self._timeout)
         self._available_models: list[str] = []
         logger.info(
-            "OllamaClient initialized | base_url={} | model={}",
+            "OllamaClient initialized | base_url={} | model={} | num_ctx={} | concurrency={}",
             self._base_url,
             self._default_model,
+            settings.ollama_num_ctx,
+            settings.ollama_max_concurrency,
         )
 
     # -------------------------------------------------------------------------
     # Lifecycle
     # -------------------------------------------------------------------------
 
+    @property
+    def default_model(self) -> str:
+        return self._default_model
+
+    def use_model(self, model: str) -> None:
+        """Re-point this client (and every component sharing it) at another model."""
+        logger.warning("OllamaClient default model {} → {}", self._default_model, model)
+        self._default_model = model
+
     async def validate_models(self) -> list[str]:
-        """Fetch and cache the list of available Ollama models."""
+        """
+        Fetch the server's model list and check that this client's model is pulled.
+
+        Raises:
+            ConnectionError: Ollama is unreachable.
+            ModelUnavailableError: The default model is not pulled.
+        """
         try:
             response = await self._client.list()
-            self._available_models = [m.model for m in response.models]
-            logger.info("Available Ollama models: {}", self._available_models)
-            return self._available_models
         except Exception as exc:
             logger.error("Failed to list Ollama models: {}", exc)
             raise ConnectionError(
                 f"Cannot connect to Ollama at {self._base_url}: {exc}"
             ) from exc
+        self._available_models = [m.model for m in response.models]
+        logger.info("Available Ollama models: {}", self._available_models)
+        self.ensure_available(self._default_model)
+        return self._available_models
+
+    def ensure_available(self, model: str) -> None:
+        available = {_normalize_model(m) for m in self._available_models}
+        if _normalize_model(model) not in available:
+            raise ModelUnavailableError(
+                f"Model {model!r} is not pulled on {self._base_url} "
+                f"(available: {sorted(available)}). Run: ollama pull {model}"
+            )
 
     async def warmup(self, model: str | None = None) -> None:
         """
-        Warm up a model by sending a minimal prompt.
+        Load a model into memory with a 1-token generation.
 
-        This ensures the model is loaded into memory before the first real query.
+        Raises on failure: a model that cannot generate here will fail every
+        real query too, and should be caught at startup.
         """
         target = model or self._default_model
         logger.info("Warming up Ollama model: {}", target)
-        try:
-            await self._client.generate(
-                model=target,
-                prompt="Hello",
-                options={"num_predict": 1},
+        await self._call(
+            "generate", model=target, prompt="Hello", options={"num_predict": 1}
+        )
+        logger.info("Model {} warmed up successfully", target)
+
+    # -------------------------------------------------------------------------
+    # Transport: concurrency gate + retries
+    # -------------------------------------------------------------------------
+
+    async def _call(self, method: str, **kwargs: Any) -> Any:
+        kwargs.setdefault("keep_alive", settings.ollama_keep_alive)
+        model = kwargs.get("model")
+        for attempt in range(settings.ollama_max_retries + 1):
+            try:
+                async with _gate(self._base_url):
+                    return await getattr(self._client, method)(**kwargs)
+            except ResponseError as exc:
+                if exc.status_code == 404:
+                    raise ModelUnavailableError(f"{model}: {exc.error}") from exc
+                if exc.status_code < 500 or attempt == settings.ollama_max_retries:
+                    raise
+                reason = f"HTTP {exc.status_code}: {exc.error}"
+            except _TRANSIENT_NETWORK as exc:
+                if attempt == settings.ollama_max_retries:
+                    raise
+                reason = f"{type(exc).__name__}: {exc}"
+            backoff = 2.0 * (attempt + 1)
+            logger.warning(
+                "Ollama {} on {} failed (attempt {}/{}), retrying in {:.0f}s | {}",
+                method, model, attempt + 1, settings.ollama_max_retries + 1, backoff, reason,
             )
-            logger.info("Model {} warmed up successfully", target)
-        except ResponseError as exc:
-            logger.warning("Warmup failed for {}: {}", target, exc)
+            await asyncio.sleep(backoff)
+        raise AssertionError("unreachable")
+
+    @staticmethod
+    def _options(temperature: float, max_tokens: int, seed: int | None = None) -> dict[str, Any]:
+        options: dict[str, Any] = {
+            "temperature": temperature,
+            "num_predict": max_tokens,
+            "num_ctx": settings.ollama_num_ctx,
+        }
+        if seed is not None:
+            options["seed"] = seed
+        return options
+
+    @staticmethod
+    def _to_result(response: Any, text: str, model: str, max_tokens: int) -> "GenerationResult":
+        result = GenerationResult(
+            text=text,
+            model=getattr(response, "model", None) or model,
+            prompt_tokens=response.prompt_eval_count or 0,
+            completion_tokens=response.eval_count or 0,
+            total_duration_ns=response.total_duration or 0,
+            eval_duration_ns=response.eval_duration or 0,
+            done_reason=getattr(response, "done_reason", None) or "",
+        )
+        if result.truncated:
+            logger.warning(
+                "Ollama output hit num_predict={} on {} — response is cut off",
+                max_tokens, result.model,
+            )
+        if result.prompt_tokens + result.completion_tokens >= settings.ollama_num_ctx - 1:
+            logger.warning(
+                "Ollama context window full on {} (prompt={} + completion={} >= num_ctx={}) "
+                "— the prompt start was likely dropped",
+                result.model, result.prompt_tokens, result.completion_tokens,
+                settings.ollama_num_ctx,
+            )
+        return _record_tokens(result)
 
     # -------------------------------------------------------------------------
     # Generation
@@ -133,40 +248,24 @@ class OllamaClient:
             GenerationResult with text, token counts, and timing info.
         """
         target = model or self._default_model
-
-        options: dict[str, Any] = {
-            "temperature": temperature,
-            "num_predict": max_tokens,
-        }
-        if seed is not None:
-            options["seed"] = seed
+        options = self._options(temperature, max_tokens, seed)
 
         try:
             if stream:
                 return await self._generate_streaming(prompt, target, system, options)
 
-            response = await self._client.generate(
+            response = await self._call(
+                "generate",
                 model=target,
                 prompt=prompt,
                 system=system,
                 options=options,
                 stream=False,
             )
+            return self._to_result(response, response.response, target, max_tokens)
 
-            return _record_tokens(GenerationResult(
-                text=response.response,
-                model=response.model,
-                prompt_tokens=response.prompt_eval_count or 0,
-                completion_tokens=response.eval_count or 0,
-                total_duration_ns=response.total_duration or 0,
-                eval_duration_ns=response.eval_duration or 0,
-            ))
-
-        except ResponseError as exc:
-            logger.error("Ollama generation failed: {}", exc)
-            raise
         except Exception as exc:
-            logger.error("Unexpected error during generation: {}", exc)
+            logger.error("Ollama generation failed on {}: {}: {}", target, type(exc).__name__, exc)
             raise
 
     async def _generate_streaming(
@@ -180,27 +279,22 @@ class OllamaClient:
         chunks: list[str] = []
         final_response = None
 
-        async for chunk in await self._client.generate(
-            model=model,
-            prompt=prompt,
-            system=system,
-            options=options,
-            stream=True,
-        ):
-            chunks.append(chunk.response)
-            if chunk.done:
-                final_response = chunk
+        async with _gate(self._base_url):
+            async for chunk in await self._client.generate(
+                model=model,
+                prompt=prompt,
+                system=system,
+                options=options,
+                stream=True,
+                keep_alive=settings.ollama_keep_alive,
+            ):
+                chunks.append(chunk.response)
+                if chunk.done:
+                    final_response = chunk
 
-        full_text = "".join(chunks)
-
-        return _record_tokens(GenerationResult(
-            text=full_text,
-            model=model,
-            prompt_tokens=final_response.prompt_eval_count if final_response else 0,
-            completion_tokens=final_response.eval_count if final_response else 0,
-            total_duration_ns=final_response.total_duration if final_response else 0,
-            eval_duration_ns=final_response.eval_duration if final_response else 0,
-        ))
+        if final_response is None:
+            raise RuntimeError(f"Ollama stream from {model} ended without a done chunk")
+        return self._to_result(final_response, "".join(chunks), model, options["num_predict"])
 
     # -------------------------------------------------------------------------
     # Chat
@@ -229,27 +323,17 @@ class OllamaClient:
         target = model or self._default_model
 
         try:
-            response = await self._client.chat(
+            response = await self._call(
+                "chat",
                 model=target,
                 messages=messages,
-                options={
-                    "temperature": temperature,
-                    "num_predict": max_tokens,
-                },
+                options=self._options(temperature, max_tokens),
                 stream=False,
             )
+            return self._to_result(response, response.message.content, target, max_tokens)
 
-            return _record_tokens(GenerationResult(
-                text=response.message.content,
-                model=response.model,
-                prompt_tokens=response.prompt_eval_count or 0,
-                completion_tokens=response.eval_count or 0,
-                total_duration_ns=response.total_duration or 0,
-                eval_duration_ns=response.eval_duration or 0,
-            ))
-
-        except ResponseError as exc:
-            logger.error("Ollama chat failed: {}", exc)
+        except Exception as exc:
+            logger.error("Ollama chat failed on {}: {}: {}", target, type(exc).__name__, exc)
             raise
 
     # -------------------------------------------------------------------------
@@ -268,30 +352,22 @@ class OllamaClient:
         """
         Generate a response with JSON format enforcement.
 
-        Uses Ollama's format parameter to request JSON output.
+        Uses Ollama's format parameter to request JSON output. Note that
+        format="json" constrains the output to a JSON *object*: prompts must
+        ask for an object (e.g. {"items": [...]}), never a bare array.
         """
         target = model or self._default_model
 
-        response = await self._client.generate(
+        response = await self._call(
+            "generate",
             model=target,
             prompt=prompt,
             system=system,
             format="json",
-            options={
-                "temperature": temperature,
-                "num_predict": max_tokens,
-            },
+            options=self._options(temperature, max_tokens),
             stream=False,
         )
-
-        return _record_tokens(GenerationResult(
-            text=response.response,
-            model=response.model,
-            prompt_tokens=response.prompt_eval_count or 0,
-            completion_tokens=response.eval_count or 0,
-            total_duration_ns=response.total_duration or 0,
-            eval_duration_ns=response.eval_duration or 0,
-        ))
+        return self._to_result(response, response.response, target, max_tokens)
 
 
 # =============================================================================
@@ -309,6 +385,7 @@ class GenerationResult:
         "completion_tokens",
         "total_duration_ns",
         "eval_duration_ns",
+        "done_reason",
     )
 
     def __init__(
@@ -319,6 +396,7 @@ class GenerationResult:
         completion_tokens: int = 0,
         total_duration_ns: int = 0,
         eval_duration_ns: int = 0,
+        done_reason: str = "",
     ) -> None:
         self.text = text
         self.model = model
@@ -326,6 +404,12 @@ class GenerationResult:
         self.completion_tokens = completion_tokens
         self.total_duration_ns = total_duration_ns
         self.eval_duration_ns = eval_duration_ns
+        self.done_reason = done_reason
+
+    @property
+    def truncated(self) -> bool:
+        """True when generation stopped at num_predict rather than naturally."""
+        return self.done_reason == "length"
 
     @property
     def total_tokens(self) -> int:

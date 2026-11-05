@@ -27,17 +27,21 @@ from app.router import DefenseInDepthRouter
 
 # Remove default loguru handler and add custom format
 logger.remove()
+logger.configure(extra={"trace_id": "-"})  # default outside a request trace
 logger.add(
     sys.stderr,
     format=(
         "<green>{time:HH:mm:ss.SSS}</green> | "
         "<level>{level: <8}</level> | "
+        "<magenta>{extra[trace_id]}</magenta> | "
         "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
         "<level>{message}</level>"
     ),
     level=settings.log_level,
     colorize=True,
 )
+
+_init_error: str | None = None
 
 # ---------------------------------------------------------------------------
 # Application State
@@ -54,7 +58,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     Models are loaded on startup and released on shutdown.
     """
-    global _router
+    global _router, _init_error
 
     logger.info("=" * 60)
     logger.info("Defense-in-Depth Framework — Starting Up")
@@ -66,8 +70,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await _router.initialize()
         logger.info("All systems initialized successfully")
     except Exception as exc:
-        logger.error("Initialization failed: {}", exc)
-        logger.warning("Framework will operate in degraded mode")
+        _init_error = f"{type(exc).__name__}: {exc}"
+        logger.error("Initialization failed: {}", _init_error)
+        logger.warning("Queries will retry initialization and return 503 until it succeeds")
 
     yield
 
@@ -113,8 +118,10 @@ async def health_check() -> dict:
     """
     Health check endpoint with model and component status.
     """
+    initialized = _router is not None and _router._initialized
     return {
-        "status": "healthy",
+        "status": "healthy" if initialized else "degraded",
+        "init_error": None if initialized else _init_error,
         "framework": "Defense-in-Depth Hallucination Mitigation",
         "version": "0.1.0",
         "config": {
@@ -130,8 +137,26 @@ async def health_check() -> dict:
             "device": settings.device,
             "use_fp16": settings.use_fp16,
         },
-        "initialized": _router is not None and _router._initialized,
+        "initialized": initialized,
     }
+
+
+async def _ready_router() -> DefenseInDepthRouter:
+    """Return the router, retrying initialization once if startup failed."""
+    global _init_error
+    if _router is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Framework not initialized. Please wait for startup to complete.",
+        )
+    if not _router._initialized:
+        try:
+            await _router.initialize()
+            _init_error = None
+        except Exception as exc:
+            _init_error = f"{type(exc).__name__}: {exc}"
+            raise HTTPException(status_code=503, detail=f"Not initialized: {_init_error}") from exc
+    return _router
 
 
 @app.post("/api/v1/query", response_model=QueryResponse)
@@ -142,16 +167,11 @@ async def process_query(request: QueryRequest) -> QueryResponse:
     Processes a user query through the full defense-in-depth pipeline:
     Layer 1 (SEP Triage) → Layer 2 (NLI-RAG) or Layer 3 (HalluClean).
     """
-    if _router is None:
-        raise HTTPException(
-            status_code=503,
-            detail="Framework not initialized. Please wait for startup to complete.",
-        )
-
+    router = await _ready_router()
     try:
-        return await _router.process_query(request)
+        return await router.process_query(request)
     except Exception as exc:
-        logger.error("Pipeline error: {}", exc)
+        logger.exception("Pipeline error: {}", exc)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
@@ -162,14 +182,13 @@ async def process_layer1(request: QueryRequest) -> QueryResponse:
 
     Forces the query through Layer 1 only (for benchmarking).
     """
-    if _router is None:
-        raise HTTPException(status_code=503, detail="Framework not initialized.")
+    router = await _ready_router()
 
     request.force_layer = 1
     try:
-        return await _router.process_query(request)
+        return await router.process_query(request)
     except Exception as exc:
-        logger.error("Layer 1 error: {}", exc)
+        logger.exception("Layer 1 error: {}", exc)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
@@ -180,14 +199,13 @@ async def process_layer2(request: QueryRequest) -> QueryResponse:
 
     Forces the query through Layer 2 (for benchmarking).
     """
-    if _router is None:
-        raise HTTPException(status_code=503, detail="Framework not initialized.")
+    router = await _ready_router()
 
     request.force_layer = 2
     try:
-        return await _router.process_query(request)
+        return await router.process_query(request)
     except Exception as exc:
-        logger.error("Layer 2 error: {}", exc)
+        logger.exception("Layer 2 error: {}", exc)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
@@ -198,14 +216,13 @@ async def process_layer3(request: QueryRequest) -> QueryResponse:
 
     Forces the query through Layer 3 (for benchmarking).
     """
-    if _router is None:
-        raise HTTPException(status_code=503, detail="Framework not initialized.")
+    router = await _ready_router()
 
     request.force_layer = 3
     try:
-        return await _router.process_query(request)
+        return await router.process_query(request)
     except Exception as exc:
-        logger.error("Layer 3 error: {}", exc)
+        logger.exception("Layer 3 error: {}", exc)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 

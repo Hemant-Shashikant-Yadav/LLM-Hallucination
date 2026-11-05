@@ -36,6 +36,7 @@ from app.config import settings
 from app.layer2_nli_rag.nli_verifier import NLIVerifier
 from app.llm_clients.ollama_client import OllamaClient
 from app.models.schemas import ErrorClassification, TriageDecision, TriageResult
+from app.telemetry import record_degradation
 
 
 @dataclass
@@ -112,7 +113,16 @@ class SemanticEntropyTriage:
         )
 
         t_safe = settings.t_safe_reasoning if is_numeric else self._t_safe
-        if entropy < t_safe and estimate.draft_in_majority:
+        # With too few samples H_sem is not evidence of certainty: (draft + 0 samples)
+        # gives H_sem = 0 and would send every query down the fast path.
+        enough_samples = len(samples) >= min(settings.se_min_samples, self._num_samples)
+        if not enough_samples:
+            record_degradation(
+                "layer1.semantic_entropy",
+                f"only {len(samples)}/{self._num_samples} samples succeeded; "
+                "H_sem unreliable, escalating instead of fast path",
+            )
+        if enough_samples and entropy < t_safe and estimate.draft_in_majority:
             decision = TriageDecision.SAFE
         elif is_numeric:
             decision = TriageDecision.REASONING_UNCERTAIN
@@ -137,10 +147,12 @@ class SemanticEntropyTriage:
         )
 
         logger.info(
-            "SE triage | decision={} | H_sem={:.3f} | clusters={}/{} | "
+            "SE triage | decision={} | H_sem={:.3f} | samples_ok={}/{} | clusters={}/{} | "
             "draft_in_majority={} | type={} | {:.0f}ms",
             decision.value,
             entropy,
+            len(samples),
+            self._num_samples,
             estimate.num_clusters,
             len(responses),
             estimate.draft_in_majority,
@@ -165,7 +177,7 @@ class SemanticEntropyTriage:
                 )
                 return res.text
             except Exception as exc:
-                logger.warning("SE sample {} failed: {}", i, exc)
+                record_degradation("layer1.sample", f"sample {i} failed: {type(exc).__name__}: {exc}")
                 return ""
 
         samples = await asyncio.gather(*(_one(i) for i in range(self._num_samples)))
@@ -192,6 +204,9 @@ class SemanticEntropyTriage:
         """Greedy bidirectional-entailment clustering (Kuhn et al., 2023)."""
         if not self._nli.is_loaded:
             # Without NLI every response is its own meaning class (maximally uncertain)
+            record_degradation(
+                "layer1.clustering", "NLI model not loaded; H_sem forced to 1.0 (always escalates)"
+            )
             return list(range(len(responses)))
 
         texts = [f"{prompt} {leading_sentences(r)}" for r in responses]

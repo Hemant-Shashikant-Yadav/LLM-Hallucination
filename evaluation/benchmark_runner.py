@@ -132,16 +132,21 @@ def eval_gsm8k_legacy(answer: str, numerical_answer: str) -> bool:
 async def query_api(
     client: httpx.AsyncClient, prompt: str, endpoint: str, model: str
 ) -> dict[str, Any]:
+    """Returns the response JSON, or {"error": ...} after retries — never a fake answer."""
     body = {"prompt": prompt, "model": model, "include_audit": True}
+    error = ""
     for attempt in range(2):
         try:
             resp = await client.post(f"{API_BASE}{endpoint}", json=body)
             resp.raise_for_status()
             return resp.json()
+        except httpx.HTTPStatusError as exc:
+            error = f"HTTP {exc.response.status_code}: {exc.response.text[:300]}"
         except Exception as exc:
-            logger.warning("API {} failed (attempt {}): {}", endpoint, attempt + 1, exc)
-            await asyncio.sleep(5)
-    return {"answer": "[ERROR]", "pipeline_result": None}
+            error = f"{type(exc).__name__}: {exc}"
+        logger.warning("API {} failed (attempt {}): {}", endpoint, attempt + 1, error)
+        await asyncio.sleep(5)
+    return {"error": error}
 
 
 def _row(
@@ -164,6 +169,8 @@ def _row(
         "semantic_entropy": triage.get("semantic_entropy", np.nan),
         "layers_invoked": pr.get("layers_invoked", ""),
         "answer_changed": pr.get("layer_answer_changed", False),
+        "trace_id": pr.get("trace_id", ""),
+        "degradations": json.dumps(pr.get("degradations", [])),
         "reference_answer": (sample["correct_answers"] or [""])[0],
         "correct_answers": json.dumps(sample["correct_answers"]),
         "incorrect_answers": json.dumps(sample.get("incorrect_answers", [])),
@@ -187,6 +194,7 @@ async def benchmark_dataset(
         logger.info("Resuming {} — {} rows already present", dataset, len(prev))
 
     paired_baseline = "baseline" in configs and "full_framework" in configs
+    failures: list[tuple[str, str, str]] = []
 
     async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
         for idx, sample in enumerate(samples):
@@ -203,7 +211,18 @@ async def benchmark_dataset(
                 t0 = time.perf_counter()
                 resp = await query_api(client, sample["prompt"], endpoint, model)
                 wall_ms = (time.perf_counter() - t0) * 1000
+                if "error" in resp:
+                    # Not written: a failed call is not a wrong answer. Re-running
+                    # resumes and retries exactly the missing (sample, config) rows.
+                    failures.append((sample["id"], config, resp["error"]))
+                    logger.error("{} / {} not recorded: {}", sample["id"], config, resp["error"])
+                    continue
                 pr = resp.get("pipeline_result") or {}
+                if pr.get("degradations"):
+                    logger.warning(
+                        "{} / {} degraded (trace {}): {}",
+                        sample["id"], config, pr.get("trace_id"), pr["degradations"],
+                    )
 
                 rows.append(_row(
                     dataset, sample, config, resp.get("answer", ""), pr,
@@ -222,10 +241,17 @@ async def benchmark_dataset(
                     ))
 
             if rows:
-                pd.DataFrame(rows).to_csv(
-                    csv_path, mode="a", header=not csv_path.exists(), index=False
-                )
+                new = pd.DataFrame(rows)
+                if csv_path.exists():
+                    # Resuming an older CSV: match its header so columns stay aligned
+                    new = new.reindex(columns=pd.read_csv(csv_path, nrows=0).columns)
+                new.to_csv(csv_path, mode="a", header=not csv_path.exists(), index=False)
 
+    if failures:
+        logger.error(
+            "{}: {} calls failed and were NOT recorded — re-run the same command to "
+            "retry them. First: {}", dataset, len(failures), failures[0],
+        )
     return pd.read_csv(csv_path)
 
 
@@ -399,10 +425,14 @@ async def run(args: argparse.Namespace) -> None:
             try:
                 r = await hc.get(f"{API_BASE}/api/v1/health")
                 r.raise_for_status()
-                logger.info("API healthy: {}", r.json().get("config"))
+                health = r.json()
             except Exception as exc:
                 logger.error("API not reachable at {}: {}", API_BASE, exc)
                 sys.exit(1)
+            if not health.get("initialized"):
+                logger.error("API is up but not initialized: {}", health.get("init_error"))
+                sys.exit(1)
+            logger.info("API healthy: {}", health.get("config"))
 
         for name in args.datasets:
             loader = load_truthfulqa if name == "truthfulqa" else load_gsm8k

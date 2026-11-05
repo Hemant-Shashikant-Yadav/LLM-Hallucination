@@ -46,6 +46,7 @@ from app.models.schemas import (
     NLIResult,
     SearchResult,
 )
+from app.telemetry import record_degradation
 
 
 class NLIVerifier:
@@ -339,8 +340,8 @@ class NLIVerifier:
         nli_results: list[NLIResult] = []
         for prop, result in zip(propositions, results):
             if isinstance(result, Exception):
-                logger.warning(
-                    "NLI verification failed for AP {}: {}", prop.id, result
+                record_degradation(
+                    "layer2.nli", f"AP {prop.id} verification failed, marked neutral: {result}"
                 )
                 # Default to neutral on error
                 nli_results.append(

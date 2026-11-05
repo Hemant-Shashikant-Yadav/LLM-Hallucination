@@ -13,6 +13,7 @@ from loguru import logger
 from app.config import settings
 from app.llm_clients.ollama_client import OllamaClient
 from app.models.schemas import ExecutionGraph, PlanNode
+from app.telemetry import record_degradation
 
 
 # System prompt for step execution
@@ -129,7 +130,7 @@ class HalluCleanExecutor:
                 reasoning_traces.append(
                     f"[Step {step.step_id}] FAILED: {exc}"
                 )
-                logger.error("Step {} failed: {}", step.step_id, exc)
+                record_degradation("layer3.execute", f"step {step.step_id} failed: {exc}")
 
         logger.info(
             "Plan execution complete | steps={} | completed={}",
@@ -163,7 +164,7 @@ class HalluCleanExecutor:
             if graph.steps:
                 graph.steps[-1].output = output
         except Exception as exc:
-            logger.error("Single-pass execution failed: {}", exc)
+            record_degradation("layer3.execute", f"single-pass execution failed: {exc}")
             for step in graph.steps:
                 step.status = "failed"
             output = f"[Error: {exc}]"

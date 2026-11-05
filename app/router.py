@@ -31,6 +31,13 @@ from app.layer3_halluclean.judge import HalluCleanJudge
 from app.layer3_halluclean.planner import HalluCleanPlanner
 from app.layer3_halluclean.program_verifier import ProgramVerifier
 from app.llm_clients.ollama_client import OllamaClient, _token_meter, start_token_meter
+from app.telemetry import (
+    current_trace_id,
+    degradations,
+    record_degradation,
+    request_trace,
+    stage,
+)
 from app.models.schemas import (
     Layer3Result,
     PipelineLayer,
@@ -101,22 +108,34 @@ class DefenseInDepthRouter:
         """
         logger.info("Initializing Defense-in-Depth pipeline...")
 
-        # Validate Ollama connection and models
+        # Load NLI model first (Layer 2, also Layer 1 semantic clustering) so that
+        # an Ollama outage at startup does not also leave NLI unloaded.
+        if not self._nli_verifier.is_loaded:
+            try:
+                await self._nli_verifier.load_model()
+                logger.info("NLI model initialized | device={}", settings.device)
+            except Exception as exc:
+                logger.error(
+                    "NLI model could not be loaded — Layer 1 will escalate every "
+                    "open-domain query and Layer 2 NLI will mark every claim neutral: {}",
+                    exc,
+                )
+
+        # Generator is mandatory: without it no query can run (raises).
         await self._ollama.validate_models()
         await self._ollama.warmup()
-        
+
+        # Judge is optional, but if it is unusable we must actually fall back,
+        # otherwise every Layer 2/3 call fails and is swallowed downstream.
         try:
             await self._judge_ollama.validate_models()
             await self._judge_ollama.warmup()
         except Exception as exc:
-            logger.warning("Judge model llama3.1:8b not found, relying on baseline for judging: {}", exc)
-
-        # Load NLI model (Layer 2, also used by Layer 1 semantic clustering)
-        try:
-            await self._nli_verifier.load_model()
-            logger.info("NLI model initialized | device={}", settings.device)
-        except Exception as exc:
-            logger.warning("NLI model could not be loaded: {}", exc)
+            logger.error(
+                "Judge model {} unusable ({}: {}) — Layer 2/3 will use generator {} instead",
+                self._judge_ollama.default_model, type(exc).__name__, exc, settings.ollama_model,
+            )
+            self._judge_ollama.use_model(settings.ollama_model)
 
         if settings.triage_mode == "semantic_entropy":
             logger.info(
@@ -176,8 +195,8 @@ class DefenseInDepthRouter:
         """Initialize ChromaDB (optional)."""
         try:
             await self._search_retriever.init_chromadb()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("ChromaDB unavailable, using web search only: {}", exc)
 
     async def shutdown(self) -> None:
         """Clean up resources during shutdown."""
@@ -202,24 +221,35 @@ class DefenseInDepthRouter:
         Returns:
             QueryResponse with the verified answer and optional audit trail.
         """
+        with request_trace():
+            async with stage(
+                "pipeline", model=request.model, force_layer=request.force_layer
+            ) as out:
+                response = await self._process_query(request)
+                pr = response.pipeline_result
+                out.update(
+                    layers=pr.layers_invoked.value if pr else "?",
+                    degradations=len(degradations()),
+                )
+                return response
+
+    async def _process_query(self, request: QueryRequest) -> QueryResponse:
         start = time.perf_counter()
         start_token_meter()
 
         logger.info("Processing query: {:.80}...", request.prompt)
 
         # Step 1: Generate draft response via Ollama
-        draft_result = await self._ollama.generate(
-            prompt=request.prompt,
-            model=request.model,
-            temperature=0.0,
-        )
-        draft_response = draft_result.text
-
-        logger.info(
-            "Draft generated | tokens={} | latency={:.1f}ms",
-            draft_result.total_tokens,
-            draft_result.latency_ms,
-        )
+        async with stage("draft", model=request.model) as out:
+            draft_result = await self._ollama.generate(
+                prompt=request.prompt,
+                model=request.model,
+                temperature=0.0,
+            )
+            draft_response = draft_result.text
+            out.update(tokens=draft_result.total_tokens, done_reason=draft_result.done_reason)
+        if not draft_response.strip():
+            record_degradation("draft", "generator returned an empty draft")
 
         # Check if a specific layer is forced (for testing)
         if request.force_layer is not None:
@@ -229,13 +259,18 @@ class DefenseInDepthRouter:
 
         # Step 2: Layer 1 Triage
         se_estimate = None
-        if settings.triage_mode == "semantic_entropy":
-            triage_result, se_estimate = await self._se_triage.triage(
-                request.prompt, draft_response, model=request.model
-            )
-        else:
-            triage_result = await self._run_layer1(
-                request.prompt, draft_response
+        async with stage("layer1.triage", mode=settings.triage_mode) as out:
+            if settings.triage_mode == "semantic_entropy":
+                triage_result, se_estimate = await self._se_triage.triage(
+                    request.prompt, draft_response, model=request.model
+                )
+            else:
+                triage_result = await self._run_layer1(
+                    request.prompt, draft_response
+                )
+            out.update(
+                decision=triage_result.decision.value,
+                H_sem=round(triage_result.semantic_entropy, 4),
             )
 
         # Step 3: Route based on triage decision
@@ -279,13 +314,15 @@ class DefenseInDepthRouter:
 
     @staticmethod
     def _cost_fields(draft_result) -> dict:
-        """Token / latency accounting: total across all LLM calls + draft-only."""
+        """Token / latency accounting plus the request's trace ID and degradations."""
         meter = _token_meter.get()
         total = sum(meter) if meter else draft_result.total_tokens
         return {
             "tokens_generated": total,
             "draft_tokens": draft_result.total_tokens,
             "draft_latency_ms": draft_result.latency_ms,
+            "trace_id": current_trace_id(),
+            "degradations": degradations(),
         }
 
     # -------------------------------------------------------------------------
@@ -357,19 +394,24 @@ class DefenseInDepthRouter:
         logger.info("Routing to Layer 2 (NLI-RAG) | H_sem={:.4f}", triage_result.semantic_entropy)
 
         # Extract atomic propositions; search evidence for the question itself in parallel
-        propositions, question_evidence = await asyncio.gather(
-            self._proposition_parser.extract_propositions(
-                draft_response, max_propositions=6
-            ),
-            self._search_retriever.search(request.prompt),
-        )
+        async with stage("layer2.extract_and_search") as out:
+            propositions, question_evidence = await asyncio.gather(
+                self._proposition_parser.extract_propositions(
+                    draft_response, max_propositions=6
+                ),
+                self._search_retriever.search(request.prompt),
+            )
+            out.update(propositions=len(propositions), question_evidence=len(question_evidence))
 
         if not propositions and not question_evidence:
-            # Nothing to verify against, return draft
+            # Nothing to verify against, return draft — but say so
+            record_degradation(
+                "layer2", "no propositions and no evidence; returning unverified draft"
+            )
             total_ms = (time.perf_counter() - start) * 1000
             pipeline_result = PipelineResult(
                 query=request.prompt,
-                layers_invoked=PipelineLayer.LAYER1_ONLY,
+                layers_invoked=PipelineLayer.LAYER1_LAYER2,
                 triage_result=triage_result,
                 final_answer=draft_response,
                 total_latency_ms=total_ms,
@@ -381,14 +423,20 @@ class DefenseInDepthRouter:
             )
 
         # Search for evidence
-        evidence_map = await self._search_retriever.search_for_propositions(
-            propositions
-        )
+        async with stage("layer2.search_propositions") as out:
+            evidence_map = await self._search_retriever.search_for_propositions(
+                propositions
+            )
+            out.update(with_evidence=sum(1 for v in evidence_map.values() if v))
+        if propositions and not any(evidence_map.values()) and not question_evidence:
+            record_degradation("layer2.search", "web search returned no evidence for any claim")
 
         # Verify propositions via NLI
-        nli_results = await self._nli_verifier.verify_propositions(
-            propositions, evidence_map
-        )
+        async with stage("layer2.nli") as out:
+            nli_results = await self._nli_verifier.verify_propositions(
+                propositions, evidence_map
+            )
+            out.update(labels=[r.label.value for r in nli_results])
 
         # Aggregate results
         layer2_result = NLIVerifier.aggregate_results(
@@ -396,12 +444,13 @@ class DefenseInDepthRouter:
         )
 
         # Evidence-grounded revision of the draft
-        layer2_result.refined_response = await self._reviser.revise(
-            question=request.prompt,
-            draft=draft_response,
-            nli_results=nli_results,
-            question_evidence=question_evidence,
-        )
+        async with stage("layer2.revise"):
+            layer2_result.refined_response = await self._reviser.revise(
+                question=request.prompt,
+                draft=draft_response,
+                nli_results=nli_results,
+                question_evidence=question_evidence,
+            )
         layer2_result.search_results_used += len(question_evidence)
         layer2_result.latency_ms = (time.perf_counter() - layer2_start) * 1000
 
@@ -448,18 +497,23 @@ class DefenseInDepthRouter:
         )
 
         # Stage 1: Plan
-        graph = await self._planner.generate_plan(request.prompt)
+        async with stage("layer3.plan") as out:
+            graph = await self._planner.generate_plan(request.prompt)
+            out.update(steps=len(graph.steps))
 
         if (
             settings.halluclean_reasoning_mode == "program_vote"
             and is_numeric_reasoning_query(request.prompt)
         ):
-            # Stages 2-4: program execution as external feedback + verified vote
+            # Stages 2-4: program execution as external feedback + verified vote.
+            # The LLM executor/judge below are intentionally NOT used on this path.
             plan_text = "\n".join(f"{i}. {s.description}" for i, s in enumerate(graph.steps, start=1))
             candidates = se_estimate.responses if se_estimate is not None else [draft_response]
-            refined, reasoning_traces, judgment = await self._program_verifier.verify(
-                request.prompt, plan_text, candidates, draft_response
-            )
+            async with stage("layer3.program_vote", candidates=len(candidates)) as out:
+                refined, reasoning_traces, judgment = await self._program_verifier.verify(
+                    request.prompt, plan_text, candidates, draft_response
+                )
+                out.update(consistent=judgment.is_consistent, confidence=judgment.confidence)
             layer3_result = Layer3Result(
                 execution_graph=graph,
                 reasoning_traces=reasoning_traces,
@@ -469,10 +523,14 @@ class DefenseInDepthRouter:
             )
         else:
             # Stage 2: Execute
-            graph, reasoning_traces = await self._executor.execute_plan(graph)
+            async with stage("layer3.execute", mode=settings.halluclean_executor_mode) as out:
+                graph, reasoning_traces = await self._executor.execute_plan(graph)
+                out.update(failed_steps=sum(1 for s in graph.steps if s.status == "failed"))
 
             # Stages 3 & 4: Judge and Refine
-            layer3_result = await self._judge.judge_and_refine(graph, reasoning_traces, draft_response)
+            async with stage("layer3.judge_refine") as out:
+                layer3_result = await self._judge.judge_and_refine(graph, reasoning_traces, draft_response)
+                out.update(consistent=layer3_result.judgment.is_consistent)
         layer3_result.latency_ms = (time.perf_counter() - layer3_start) * 1000
 
         total_ms = (time.perf_counter() - start) * 1000

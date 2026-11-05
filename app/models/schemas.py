@@ -17,6 +17,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.config import settings
+
 
 # =============================================================================
 # Enumerations
@@ -65,7 +67,10 @@ class QueryRequest(BaseModel):
     """Incoming user query to the framework."""
 
     prompt: str = Field(..., min_length=1, description="User prompt / question")
-    model: str = Field(default="llama2:7b", description="Ollama model identifier")
+    model: str = Field(
+        default_factory=lambda: settings.ollama_model,
+        description="Ollama model identifier (defaults to DID_OLLAMA_MODEL)",
+    )
     force_layer: int | None = Field(
         default=None,
         ge=1,
@@ -372,6 +377,11 @@ class PipelineResult(BaseModel):
     layer_answer_changed: bool = Field(
         default=False,
         description="True when Layer 2/3 replaced the draft with a different answer",
+    )
+    trace_id: str = Field(default="", description="Correlates this result with its log lines")
+    degradations: list[str] = Field(
+        default_factory=list,
+        description="Stages that fell back instead of running normally ('stage: reason')",
     )
     timestamp: float = Field(default_factory=time.time)
 
