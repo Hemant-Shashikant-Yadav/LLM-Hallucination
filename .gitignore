@@ -10,3 +10,12 @@ __pycache__/
 
 # Testing caches
 .pytest_cache/
+
+# Byte-compiled / cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Testing caches
+.pytest_cache/
