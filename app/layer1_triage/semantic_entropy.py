@@ -31,6 +31,7 @@ from app.answer_utils import (
     canonicalize,
     extract_choice,
     extract_final_answer,
+    is_advanced_math,
     is_numeric_reasoning_query,
     leading_sentences,
     parse_options,
@@ -97,11 +98,15 @@ class SemanticEntropyTriage:
     ) -> tuple[TriageResult, SemanticEntropyEstimate]:
         start = time.perf_counter()
 
-        samples = await self._sample(prompt, model)
-        responses = [draft_response, *samples]
         is_numeric = (
             task_type == "math" if task_type is not None else is_numeric_reasoning_query(prompt)
         )
+        advanced = is_numeric and is_advanced_math(prompt)
+        samples = await self._sample(
+            prompt, model, max_tokens=settings.se_max_tokens_advanced if advanced else None,
+            drop_truncated=is_numeric or bool(parse_options(prompt)),
+        )
+        responses = [draft_response, *samples]
 
         options = parse_options(prompt)
         if options:
@@ -138,6 +143,9 @@ class SemanticEntropyTriage:
             # A confident answer about a changing fact can simply be out of date:
             # agreement between samples says nothing about freshness.
             decision = TriageDecision.KNOWLEDGE_UNCERTAIN
+        elif advanced and settings.verify_advanced_math:
+            # On hard problems all samples can share one mistake: always verify
+            decision = TriageDecision.REASONING_UNCERTAIN
         elif enough_samples and entropy < t_safe and estimate.draft_in_majority:
             decision = TriageDecision.SAFE
         elif is_numeric:
@@ -181,12 +189,15 @@ class SemanticEntropyTriage:
     # Sampling
     # -------------------------------------------------------------------------
 
-    async def sample(self, prompt: str, model: str | None, n: int, seed_base: int) -> list[str]:
+    async def sample(self, prompt: str, model: str | None, n: int, seed_base: int,
+                     max_tokens: int | None = None) -> list[str]:
         """Draw n more stochastic samples (used by Layer 3's self-consistency vote)."""
-        return await self._sample(prompt, model, n=n, seed_base=seed_base)
+        return await self._sample(prompt, model, n=n, seed_base=seed_base, max_tokens=max_tokens,
+                                  drop_truncated=True)
 
     async def _sample(
-        self, prompt: str, model: str | None, n: int | None = None, seed_base: int = 1000
+        self, prompt: str, model: str | None, n: int | None = None, seed_base: int = 1000,
+        max_tokens: int | None = None, drop_truncated: bool = False,
     ) -> list[str]:
         async def _one(i: int) -> str:
             try:
@@ -194,9 +205,14 @@ class SemanticEntropyTriage:
                     prompt=prompt,
                     model=model,
                     temperature=self._temperature,
-                    max_tokens=settings.se_max_tokens,
+                    max_tokens=max_tokens or settings.se_max_tokens,
                     seed=seed_base + i,
                 )
+                if drop_truncated and getattr(res, "truncated", False):
+                    # A maths sample cut off mid-calculation has no final answer, only
+                    # whatever digit came last: it must not vote (seen live on m12)
+                    logger.info("Sample {} hit the token limit; excluded from the vote", i)
+                    return ""
                 return res.text
             except Exception as exc:
                 record_degradation("layer1.sample", f"sample {i} failed: {type(exc).__name__}: {exc}")

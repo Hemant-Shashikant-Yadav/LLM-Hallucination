@@ -108,8 +108,8 @@ class ParsingTests(unittest.TestCase):
                 self.assertEqual(extract_final_number(text), want)
 
     def test_symbolic_answer_key(self):
-        self.assertEqual(extract_final_answer("Final answer: 2x"), "2x")
-        self.assertEqual(extract_final_answer("Final answer: 2 * x."), "2x")
+        self.assertEqual(extract_final_answer("Final answer: 2x"), "2*x")
+        self.assertEqual(extract_final_answer("Final answer: 2 * x."), "2*x")
 
     def test_tolerant_matching(self):
         self.assertTrue(numbers_match("142857.14", "142857.142857"))
@@ -164,6 +164,43 @@ class MCQTests(unittest.TestCase):
             settings.program_vote_weighting = old
         # b: 2 samples + 2 programs*0.5 = 3 > a: 2 samples; program 99 matches no option
         self.assertTrue(out.endswith("Final answer: (b) 60"))
+        self.assertFalse(judgment.is_consistent)
+
+    def _verify_styles(self, by_style: dict[str, str], draft: str, query: str):
+        verifier = ProgramVerifier(None, num_programs=5)
+
+        async def fake_write(_q, _plan, seed, style="basic"):
+            return by_style[style]
+
+        async def no_repair(_q, code, _err, seed):
+            return code
+
+        verifier._write_program, verifier._repair = fake_write, no_repair
+        old = settings.program_vote_weighting
+        settings.program_vote_weighting = "sample_primary"
+        try:
+            return asyncio.run(verifier.verify(query, "plan", [draft], draft))
+        finally:
+            settings.program_vote_weighting = old
+
+    def test_one_kind_of_program_cannot_overturn_draft(self):
+        # Seen live (m12): programs of one kind all misread a × b as a dot product
+        q = "Find the magnitude of a × b for a = 2i + j - k and b = i - j + 2k."
+        draft = r"So |a × b| = \boxed{\sqrt{35}}"
+        out, _, judgment = self._verify_styles(
+            {"advanced": "def solution():\n    return 1\n",
+             "check": "def solution():\n    return undefined_name\n"}, draft, q)
+        self.assertEqual(out, draft)  # 3 programs * 0.5 = 1.5 > 1 draft vote, but one method only
+        self.assertTrue(judgment.is_consistent)
+
+    def test_two_independent_methods_can_overturn_draft(self):
+        # Seen live (h07): every sample was cut off, only the programs got 486
+        q = "If A = [[2, 1], [1, 2]], what is the sum of all entries of A^5?"
+        draft = r"So the sum is \boxed{585}"
+        out, _, judgment = self._verify_styles(
+            {"advanced": "def solution():\n    return 486\n",
+             "check": "def solution():\n    return 486\n"}, draft, q)
+        self.assertTrue(out.endswith("Final answer: 486"))
         self.assertFalse(judgment.is_consistent)
 
     def test_exact_mcq_override(self):

@@ -45,6 +45,37 @@ same time, because Ollama swaps them on every request (seen: 9 min/question).
   from falsehoods that are common online, so open-web snippets are adversarial evidence for it.
   This makes **P2-7 (curated sources) the top Layer 2 item**.
 
+**Hard question sets (Nov 2026, `evaluation/hard_sets.py`, 74 questions with keys verified by
+sympy or brute force; `python -m evaluation.hard_eval`):** old framework vs new framework on the same questions.
+
+| Category | Raw qwen | Old framework | New framework |
+|---|---|---|---|
+| 12th-standard maths (20) | 20 | 13 | **20** |
+| JEE-style MCQs (15) | 13 | 14 | **14** |
+| Real-life word problems (15) | 13 | 14 | **15** |
+| Multi-step reasoning, yes/no (12) | 7 | 7 | 7 |
+| Hard maths (12) | 8 | 4 | **9** |
+| **Total (74)** | **61** | **52** (fixed 2, broke 11) | **65** (fixed 5, broke 1) |
+
+What changed (Layer 3 for advanced maths):
+- A safe symbolic parser (no `eval`) reads π/4, e², \frac, 2x sin x, ₹, %, units and
+  concluding sentences. The old parser grabbed stray digits ('4' from \frac{\pi}{4},
+  '1' from "at x = 1"), so the vote picked garbage. That alone caused 11 breaks.
+- The sandbox allows sympy, itertools, collections. Advanced questions get alternating
+  exact-sympy programs and *independent-check* programs (enumeration, numerical approximation).
+- Advanced maths (calculus, matrices, vectors, probability, counting, including notation
+  like `[[…]]`, `a × b`, `2i + j − k`) never takes the fast path.
+- Adaptive self-consistency: draw more samples only while the vote is close. Maths samples
+  cut off at the token limit don't vote.
+- Programs overturn the draft only with sample support, or when ≥ 3 programs from **both**
+  methods agree.
+- Bugs found live and fixed: a program returning ∞ crashed the request (500); cut-off
+  samples voted with random digits; programs of one kind outvoted a correct draft.
+
+Still failing (honest limits): when most samples share one misconception (h12: 600 vs 216;
+j05: 1/7 vs 2/7), voting follows them; arithmetic slips with scattered samples (h07).
+Layer 2 is neutral on yes/no reasoning (1 fixed, 1 broken).
+
 ## 2. Gaps found against requirement 2 (basic web + math questions)
 
 Probed offline on 18 basic questions (`app/answer_utils.py`):

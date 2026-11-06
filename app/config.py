@@ -248,8 +248,34 @@ class FrameworkSettings(BaseSettings):
         ge=0,
         le=20,
         description=(
-            "Extra reasoning samples drawn in Layer 3, added to the draft and the "
+            "Extra reasoning samples always drawn in Layer 3, added to the draft and the "
             "Layer 1 samples for the self-consistency vote."
+        ),
+    )
+    l3_max_extra_samples: int = Field(
+        default=12,
+        ge=0,
+        le=30,
+        description=(
+            "Adaptive sampling ceiling: while the vote is close (top answer below "
+            "l3_stop_agreement of the samples), draw l3_sample_step more, up to this many."
+        ),
+    )
+    l3_sample_step: int = Field(default=3, ge=1, le=10)
+    l3_stop_agreement: float = Field(default=0.7, ge=0.5, le=1.0)
+    se_max_tokens_advanced: int = Field(
+        default=1536,
+        ge=128,
+        description=(
+            "Max tokens per sample for advanced maths. qwen writes verbose LaTeX: vector and "
+            "calculus solutions were cut off at 1024, and a cut-off sample cannot vote."
+        ),
+    )
+    verify_advanced_math: bool = Field(
+        default=True,
+        description=(
+            "Advanced maths (calculus, matrices, probability, counting) never takes the "
+            "fast path: on hard problems all samples can agree on one wrong answer."
         ),
     )
     halluclean_executor_mode: Literal["single_pass", "per_step"] = Field(

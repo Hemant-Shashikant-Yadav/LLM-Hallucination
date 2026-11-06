@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import math
 import re
 import subprocess
 import sys
@@ -29,13 +30,16 @@ from loguru import logger
 
 from app.answer_utils import (
     Calculation,
+    answers_match,
     canonicalize,
     extract_choice,
     extract_final_answer,
-    extract_final_number,
+    is_advanced_math,
     normalize_number,
     numbers_match,
+    option_value,
     parse_options,
+    values_close,
 )
 from app.config import settings
 from app.llm_clients.ollama_client import OllamaClient
@@ -93,6 +97,84 @@ def solution():
     return white
 ```'''
 
+# Senior-school maths: exact symbolic computation with sympy
+_ADVANCED_SYSTEM = """You solve maths problems by writing a short Python program.
+
+Rules:
+1. Define a function `solution()` that returns the final answer.
+2. Use sympy for calculus, algebra, matrices and vectors; use fractions.Fraction and
+   math.comb / math.perm for probability and counting, so the result is exact.
+3. Return a number or a sympy expression (for example an exact value such as pi/4,
+   or an expression in x for a derivative). Never return a string.
+4. Return exactly what the question asks for. No input(), no printing, no files.
+Respond with the Python code only, inside a ```python code block."""
+
+_ADVANCED_EXAMPLES = '''PROBLEM: Evaluate the definite integral of x^2 e^x dx from x = 0 to x = 1.
+
+```python
+import sympy as sp
+def solution():
+    x = sp.symbols('x')
+    return sp.integrate(x**2 * sp.exp(x), (x, 0, 1))
+```
+
+PROBLEM: Find dy/dx if y = x^3 cos x.
+
+```python
+import sympy as sp
+def solution():
+    x = sp.symbols('x')
+    return sp.diff(x**3 * sp.cos(x), x)
+```
+
+PROBLEM: Three cards are drawn without replacement from 5 red and 3 blue cards. What is the probability that exactly two are red?
+
+```python
+from fractions import Fraction
+from math import comb
+def solution():
+    favourable = comb(5, 2) * comb(3, 1)  # choose 2 red and 1 blue
+    total = comb(8, 3)
+    return Fraction(favourable, total)
+```'''
+
+# A second, independent method: errors that the direct formula makes are unlikely to
+# be repeated by enumeration or numerical approximation, so agreement is real evidence
+_CHECK_SYSTEM = """You check maths answers by solving the problem with an INDEPENDENT
+method in a short Python program, without reusing the obvious formula.
+
+Rules:
+1. Define a function `solution()` that returns the final numeric answer.
+2. Counting and probability with small numbers: enumerate every case with itertools
+   and count. Integrals, limits and derivatives at a point: approximate numerically
+   (a fine midpoint sum, a value very close to the limit point, a small difference
+   quotient). Equations: search for the value that satisfies the condition.
+3. Use only what the problem states. No input(), no printing, no files.
+4. Return a number, never a string.
+Respond with the Python code only, inside a ```python code block."""
+
+_CHECK_EXAMPLES = '''PROBLEM: Three cards are drawn without replacement from 5 red and 3 blue cards. What is the probability that exactly two are red?
+
+```python
+from itertools import combinations
+from fractions import Fraction
+def solution():
+    cards = ['R'] * 5 + ['B'] * 3
+    hands = list(combinations(range(8), 3))
+    good = sum(1 for hand in hands if sum(cards[i] == 'R' for i in hand) == 2)
+    return Fraction(good, len(hands))
+```
+
+PROBLEM: Evaluate the definite integral of x^2 e^x dx from x = 0 to x = 1.
+
+```python
+import math
+def solution():
+    n = 200000
+    h = 1 / n
+    return sum(((i + 0.5) * h) ** 2 * math.exp((i + 0.5) * h) for i in range(n)) * h
+```'''
+
 _PROGRAM_PROMPT = """{examples}
 
 PROBLEM: {query}
@@ -119,40 +201,62 @@ _NEGATIVE_CUES = re.compile(
 )
 
 # Sandbox rejections that must not be "repaired" into something that gets past the check
-_UNSAFE_PREFIXES = ("rejected: disallowed", "rejected: blocked", "rejected: private")
+# (A disallowed import is repairable: the error names the allowed modules and the
+# repaired code is checked again, so a repair can never widen what runs.)
+_UNSAFE_PREFIXES = ("rejected: blocked", "rejected: private")
 
-_ALLOWED_IMPORTS = {"math", "fractions", "decimal"}
+_ALLOWED_IMPORTS = {
+    "math", "fractions", "decimal", "sympy", "itertools", "statistics",
+    "collections", "functools", "operator",
+}
 _BLOCKED_NAMES = {
     "open", "exec", "eval", "compile", "__import__", "input", "globals", "locals",
     "getattr", "setattr", "delattr", "vars", "dir", "breakpoint", "exit", "quit",
     "help", "memoryview", "classmethod", "staticmethod", "super", "type",
+    # sympy entry points that parse or compile strings (sympify / parse_expr use eval)
+    "sympify", "parse_expr", "lambdify", "preview", "S", "parsing", "init_session",
 }
+# A result that is not a plain number is printed as a sympy expression, but only when
+# the program built a sympy object: a returned string is never parsed
 _RUNNER = """
 import math, fractions, decimal
 {code}
 _r = solution()
-print(repr(float(_r)))
+if isinstance(_r, (list, tuple)) and len(_r) == 1:
+    _r = _r[0]
+try:
+    print(repr(float(_r)))
+except (TypeError, ValueError):
+    import sympy as _sp
+    if not isinstance(_r, _sp.Basic):
+        raise TypeError('solution() must return a number or a sympy expression')
+    print('EXPR:' + _sp.sstr(_sp.simplify(_r)))
 """
 
 
 def _option_for(value: str | None, options: dict[str, str]) -> str | None:
     """The single option whose numeric value matches, if any."""
-    hits = [k for k, text in options.items() if numbers_match(extract_final_number(text), value)]
+    hits = [k for k, text in options.items() if values_close(option_value(text), value)]
     return hits[0] if len(hits) == 1 else None
 
 
-def _is_integer(value: str) -> bool:
+def _as_float(value: str | None) -> float | None:
     try:
-        return float(value).is_integer()
-    except ValueError:
-        return False
+        return float(value)
+    except (TypeError, ValueError):
+        return None  # a symbolic result such as '2*x*sin(x)'
+
+
+def _is_integer(value: str) -> bool:
+    number = _as_float(value)
+    return number is not None and number.is_integer()
 
 
 class ProgramVerifier:
     """Program-verified self-consistency for quantitative queries."""
 
     def __init__(self, ollama_client: OllamaClient, num_programs: int | None = None,
-                 timeout_s: float = 5.0) -> None:
+                 timeout_s: float = 20.0) -> None:  # sympy import + integration takes seconds
         self._client = ollama_client
         self._num_programs = num_programs or settings.program_vote_num_programs
         self._timeout_s = timeout_s
@@ -169,8 +273,15 @@ class ProgramVerifier:
         if exact is not None:
             return self._verify_exact(draft, exact, parse_options(query))
 
+        advanced = is_advanced_math(query)
+        # Advanced maths: alternate exact sympy programs with independent checks
+        # (enumeration, numerical approximation), so a shared misreading is less likely
+        styles = [
+            ("check" if advanced and i % 2 else "advanced" if advanced else "basic")
+            for i in range(self._num_programs)
+        ]
         programs = list(await asyncio.gather(
-            *(self._write_program(query, plan_text, seed=i) for i in range(self._num_programs))
+            *(self._write_program(query, plan_text, seed=i, style=s) for i, s in enumerate(styles))
         ))
         results = list(await asyncio.gather(*(self._run(code) for code in programs)))
 
@@ -187,22 +298,28 @@ class ProgramVerifier:
                 logger.debug("Program {} repaired: {} → {}", i + 1, results[i][1], res)
                 programs[i], results[i] = code, res
 
-        integer_task = not re.search(r"\d\.\d", query)
-        negatives_possible = bool(_NEGATIVE_CUES.search(query))
+        # Plausibility rules are for everyday word problems: probabilities, exact values
+        # such as pi/4 and negative determinants are normal in advanced maths
+        integer_task = not re.search(r"\d\.\d", query) and not advanced
+        negatives_possible = bool(_NEGATIVE_CUES.search(query)) or advanced
         traces: list[str] = []
         program_answers: list[str] = []
+        program_styles: list[str] = []
         for i, (code, (ans, err)) in enumerate(zip(programs, results), start=1):
             if ans is not None and integer_task and not _is_integer(ans):
                 # Plausibility check: a problem stated in whole numbers that yields a
                 # fractional count is almost always a mis-modelled program.
                 ans, err = None, f"implausible non-integer answer {ans}"
-            elif ans is not None and float(ans) < 0 and not negatives_possible:
+            elif ans is not None and (_as_float(ans) or 0) < 0 and not negatives_possible:
                 # Word-problem quantities (money, items, time) are non-negative; a
                 # negative result means a subtraction was modelled backwards.
                 ans, err = None, f"implausible negative answer {ans}"
-            traces.append(f"[Program {i}] result={ans if ans is not None else err}\n{code}")
+            traces.append(
+                f"[Program {i} {styles[i - 1]}] result={ans if ans is not None else err}\n{code}"
+            )
             if ans is not None:
                 program_answers.append(ans)
+                program_styles.append(styles[i - 1])
 
         # Compare everything on canonical answers so '0.875' == '7/8' and
         # '142857.14' == '142857.142857' when voting
@@ -212,13 +329,15 @@ class ProgramVerifier:
             # option whose value it computed; one matching no option is discarded.
             draft_answer = extract_choice(draft, options)
             nl_answers = [extract_choice(c, options) for c in candidates]
-            program_answers = [k for k in (_option_for(a, options) for a in program_answers) if k]
+            kept = [(_option_for(a, options), s) for a, s in zip(program_answers, program_styles)]
+            kept = [(k, s) for k, s in kept if k]
+            program_answers, program_styles = [k for k, _ in kept], [s for _, s in kept]
         else:
             raw_nl = [extract_final_answer(c) for c in candidates]
             n_prog = len(program_answers)
             canon = canonicalize([extract_final_answer(draft), *program_answers, *raw_nl])
             draft_answer = canon[0]
-            program_answers = [a for a in canon[1:1 + n_prog] if a is not None]
+            program_answers = canon[1:1 + n_prog]  # all non-None: only answers were kept
             nl_answers = canon[1 + n_prog:]
         final_line = (lambda k: f"({k}) {options[k]}") if options else (lambda k: k)
         prog_votes = Counter(program_answers)
@@ -241,6 +360,19 @@ class ProgramVerifier:
             )
             total = sum(scores.values())
             source = f"sample-primary vote (program weight {w})"
+            # Programs alone overturn the draft only as two independent methods: at
+            # least 3 programs agreeing, including both an exact (sympy) program and an
+            # independent check. Seen live: 5 programs of one style that all misread a
+            # cross product as a dot product outvoted a correct draft, while on another
+            # problem the right answer came only from programs.
+            backing_styles = {s for a, s in zip(program_answers, program_styles) if a == final}
+            independent = prog_votes.get(final, 0) >= 3 and {"advanced", "check"} <= backing_styles
+            if (final != draft_answer and draft_answer is not None
+                    and nl_votes.get(final, 0) == 0 and not independent):
+                logger.info("Only one kind of program supports {}; keeping draft {}",
+                            final, draft_answer)
+                final, top = draft_answer, scores.get(draft_answer, 1)
+                source = "draft kept (program answer not confirmed independently)"
         elif prog_votes:
             # Natural-language answers only count when a program confirms them
             scores = {a: prog_votes[a] + nl_votes.get(a, 0) for a in prog_votes}
@@ -298,7 +430,7 @@ class ProgramVerifier:
                 return f"{cand.strip()}\n\nFinal answer: {final_line(final)}", traces, judgment
         code = next(
             (c for c, (a, _) in zip(programs, results)
-             if numbers_match(a, final) or (options and _option_for(a, options) == final)),
+             if answers_match(a, final) or (options and _option_for(a, options) == final)),
             "",
         )
         return (
@@ -340,15 +472,19 @@ class ProgramVerifier:
 
     # -------------------------------------------------------------------------
 
-    async def _write_program(self, query: str, plan_text: str, seed: int) -> str:
+    async def _write_program(self, query: str, plan_text: str, seed: int,
+                             style: str = "basic") -> str:
+        system, examples = {
+            "basic": (_PROGRAM_SYSTEM, _PROGRAM_EXAMPLES),
+            "advanced": (_ADVANCED_SYSTEM, _ADVANCED_EXAMPLES),
+            "check": (_CHECK_SYSTEM, _CHECK_EXAMPLES),
+        }[style]
         try:
             res = await self._client.generate(
-                prompt=_PROGRAM_PROMPT.format(
-                    examples=_PROGRAM_EXAMPLES, query=query, plan=plan_text
-                ),
-                system=_PROGRAM_SYSTEM,
+                prompt=_PROGRAM_PROMPT.format(examples=examples, query=query, plan=plan_text),
+                system=system,
                 temperature=0.0 if seed == 0 else 0.5,
-                max_tokens=600,
+                max_tokens=600 if style == "basic" else 900,
                 seed=seed,
             )
         except Exception as exc:
@@ -376,6 +512,14 @@ class ProgramVerifier:
         return (match.group(1) if match else text).strip()
 
     async def _run(self, code: str) -> tuple[str | None, str]:
+        """One misbehaving program fails on its own; it never fails the whole query."""
+        try:
+            return await self._execute(code)
+        except Exception as exc:
+            record_degradation("layer3.program_exec", f"program result unreadable: {exc}")
+            return None, f"error: {type(exc).__name__}: {exc}"
+
+    async def _execute(self, code: str) -> tuple[str | None, str]:
         if "def solution" not in code:
             return None, "no solution() function"
         problem = self._unsafe_reason(code)
@@ -401,10 +545,14 @@ class ProgramVerifier:
             lines = err.decode(errors="ignore").strip().splitlines()
             return None, lines[-1] if lines else "runtime error"
         value = out.decode().strip().splitlines()[-1] if out.strip() else ""
+        if value.startswith("EXPR:"):
+            return value.removeprefix("EXPR:").strip() or None, "ok"
         try:
             num = float(value)
         except ValueError:
             return None, f"non-numeric output {value!r}"
+        if not math.isfinite(num):
+            return None, f"non-finite result {value}"  # e.g. a limit mis-computed as oo
         if abs(num - round(num)) < 1e-6:
             num = round(num)
         return normalize_number(str(num)), "ok"
@@ -416,15 +564,24 @@ class ProgramVerifier:
             tree = ast.parse(code)
         except SyntaxError as exc:
             return f"syntax error: {exc.msg}"
+        allowed = ", ".join(sorted(_ALLOWED_IMPORTS))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
-                if any(a.name.split(".")[0] not in _ALLOWED_IMPORTS for a in node.names):
-                    return "disallowed import"
+                for a in node.names:
+                    if set(a.name.split(".")) & _BLOCKED_NAMES:
+                        return f"blocked name in import {a.name}"
+                    if a.name.split(".")[0] not in _ALLOWED_IMPORTS:
+                        return f"disallowed import {a.name}; use only: {allowed}"
             elif isinstance(node, ast.ImportFrom):
-                if (node.module or "").split(".")[0] not in _ALLOWED_IMPORTS:
-                    return "disallowed import"
+                parts = (node.module or "").split(".")
+                if set(parts) & _BLOCKED_NAMES or any(a.name in _BLOCKED_NAMES for a in node.names):
+                    return f"blocked name in import {node.module}"
+                if parts[0] not in _ALLOWED_IMPORTS:
+                    return f"disallowed import {node.module}; use only: {allowed}"
             elif isinstance(node, ast.Name) and node.id in _BLOCKED_NAMES:
                 return f"blocked name {node.id}"
+            elif isinstance(node, ast.Attribute) and node.attr in _BLOCKED_NAMES:
+                return f"blocked name {node.attr}"
             elif isinstance(node, ast.Attribute) and node.attr.startswith("_"):
                 return "private attribute access"
             elif isinstance(node, (ast.Global, ast.Nonlocal, ast.AsyncFunctionDef, ast.Await)):

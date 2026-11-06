@@ -126,6 +126,8 @@ def extract_final_number(text: str) -> str | None:
     return numbers[-1] if numbers else None
 
 
+_MARKERS_PRESENT = re.compile(r"####|\\boxed\{|final answer|\banswer\s*(?:is|:)", re.IGNORECASE)
+
 _SYMBOLIC_MARKER = re.compile(
     r"(?:final answer\s*(?:is|:)?|\\boxed\{)\s*[:=]?\s*\**\s*([^\n]{1,60})", re.IGNORECASE
 )
@@ -137,6 +139,19 @@ def extract_final_answer(text: str) -> str | None:
     normalised symbolic string ('2x', 'x=4'), so non-numeric math answers can
     still be clustered and voted on.
     """
+    stated = final_expression(text)
+    if stated and re.search(r"[a-zA-Z\\πe√]", stated):
+        # π/4, e^2, 2x sin x, 18 \text{dollars}: parse the stated expression rather
+        # than grabbing a stray digit from it ('4' out of \frac{\pi}{4})
+        key = symbolic_key(text)
+        if key is not None:
+            return key
+    elif stated and not _MARKERS_PRESENT.search(text):
+        # No explicit marker: the concluding sentence's number beats the last number
+        # in the text ('… is ₹946.94, rounded to 2 decimal places' → 946.94, not 2)
+        value = normalize_number(stated)
+        if value is not None:
+            return value
     number = extract_final_number(text)
     if number is not None:
         return number
@@ -202,9 +217,9 @@ def extract_choice(answer: str, options: dict[str, str]) -> str | None:
     """
     if not answer or not options:
         return None
-    value = extract_final_number(answer)
+    value = final_value(answer)
     if value is not None:
-        hits = [k for k, text in options.items() if numbers_match(extract_final_number(text), value)]
+        hits = [k for k, text in options.items() if values_close(option_value(text), value)]
         if len(hits) == 1:
             return hits[0]
     marks = _BOXED_LETTER.findall(answer) or [
@@ -217,6 +232,333 @@ def extract_choice(answer: str, options: dict[str, str]) -> str | None:
     found = [(tail.rfind(text.lower()), k) for k, text in options.items()
              if len(text) >= 3 and text.lower() in tail]
     return max(found)[1] if found else None
+
+
+# =============================================================================
+# Safe symbolic maths: LaTeX / plain answer text → sympy, without eval
+# =============================================================================
+
+_SYMPY_FUNCS = {
+    "sin", "cos", "tan", "sec", "csc", "cot", "asin", "acos", "atan", "sinh", "cosh", "tanh",
+    "log", "ln", "exp", "sqrt", "abs", "Abs",
+}
+_SYMPY_NAMES = {"x", "y", "z", "t", "n", "k", "a", "b", "c", "r", "pi", "e", "E", "oo"}
+_UNIT_WORDS = (
+    r"km/h|kmph|m/s|cm\^?2|cm²|cm³|m²|m\^2|sq\.?\s*units?|square\s+units?|units?|cm|mm|km|kg|"
+    r"g|m|s|sec|seconds?|minutes?|mins?|hours?|hrs?|h|days?|years?|litres?|liters?|l|ml|"
+    r"rupees|rs\.?|inr|dollars?|percent|per\s*cent|degrees?|radians?|ways|people|eggs|balls"
+)
+
+
+def _replace_braced(text: str, command: str, render) -> str:
+    """Replace \\command{a}{b}... (balanced braces) using render(args)."""
+    nargs = render.__code__.co_argcount
+    while True:
+        start = text.find(command + "{")
+        if start < 0:
+            return text
+        pos, args = start + len(command), []
+        for _ in range(nargs):
+            if pos >= len(text) or text[pos] != "{":
+                return text
+            depth, end = 0, pos
+            while end < len(text):
+                depth += {"{": 1, "}": -1}.get(text[end], 0)
+                if depth == 0:
+                    break
+                end += 1
+            args.append(text[pos + 1:end])
+            pos = end + 1
+        text = text[:start] + render(*args) + text[pos:]
+
+
+def _latex_to_plain(text: str) -> str:
+    t = text.strip()
+    t = re.sub(r"\^\s*\{?\s*\\circ\s*\}?|\\circ|\\degree", " ", t)  # 70.53^\circ → 70.53
+    t = re.sub(r"\\(?:text|mathrm|operatorname|textbf|mathbf)\{([^{}]*)\}", r" \1 ", t)
+    t = re.sub(r"\\(?:left|right|displaystyle|,|;|!|quad)", " ", t)
+    t = t.replace("\\(", " ").replace("\\)", " ").replace("\\[", " ").replace("\\]", " ").replace("$", " ")
+    for cmd in ("\\dfrac", "\\tfrac", "\\frac"):
+        t = _replace_braced(t, cmd, lambda a, b: f"(({a})/({b}))")
+    t = _replace_braced(t, "\\sqrt", lambda a: f"sqrt({a})")
+    t = re.sub(r"\\(sin|cos|tan|sec|csc|cot|arcsin|arccos|arctan|sinh|cosh|tanh|ln|log|exp)\b",
+               r" \1 ", t)
+    t = t.replace("arcsin", "asin").replace("arccos", "acos").replace("arctan", "atan")
+    t = re.sub(r"\\(?:cdot|times)", "*", t)
+    t = re.sub(r"\\pi\b", " pi ", t)
+    t = re.sub(r"\\infty\b", " oo ", t)
+    t = t.replace("π", " pi ").replace("∞", " oo ").replace("×", "*").replace("·", "*")
+    t = t.replace("÷", "/").replace("−", "-").replace("√", "sqrt").replace("²", "^2").replace("³", "^3")
+    t = t.replace("{", "(").replace("}", ")").replace("^", "**").replace("\\", " ")
+    return t
+
+
+def _strip_units(text: str) -> tuple[str, bool]:
+    """Drop leading currency and trailing unit words; report whether a % was present."""
+    t = text.strip().rstrip(".")
+    percent = "%" in t or re.search(r"\bper\s*cent\b|\bpercent\b", t, re.IGNORECASE) is not None
+    t = t.replace("%", " ")
+    t = re.sub(r"^\s*(?:₹|rs\.?|inr|\$|usd)\s*", "", t, flags=re.IGNORECASE)
+    t = re.sub(r"[₹°]", " ", t)
+    for _ in range(3):
+        t = re.sub(r"\s*\b(?:" + _UNIT_WORDS + r")\s*$", "", t, flags=re.IGNORECASE).strip()
+    return t.replace(",", ""), percent
+
+
+def _insert_multiplication(t: str) -> str:
+    funcs = "|".join(sorted(_SYMPY_FUNCS, key=len, reverse=True))
+    t = re.sub(rf"\b({funcs})\s+(?!\()([a-zA-Z0-9.]+(?:\*\*[a-zA-Z0-9.]+)?)", r"\1(\2)", t)  # sin x
+    t = re.sub(r"(\d)\s*(?=[a-zA-Z(])", r"\1*", t)                  # 2x, 2(…), 2pi
+    t = re.sub(r"\)\s*(?=[\w(])", ")*", t)                          # )( , )x
+    t = re.sub(rf"(?<![a-zA-Z])(?!(?:{funcs})\b)([a-zA-Z])\s*\(", r"\1*(", t)  # x(…) when x is a variable
+    t = re.sub(r"(?<=[\w)])\s+(?=[\w(])", "*", t)                   # x sin(x) → x*sin(x)
+    return t
+
+
+def to_sympy(text: str | None):
+    """
+    Parse an answer such as 'π/4', 'e^2', '\\frac{12}{17}', '2x sin x + x^2 cos x' or
+    '72 km/h' into a sympy expression. Untrusted text is never passed to eval or
+    sympify: it is reduced to a whitelisted AST and built node by node.
+    Returns None when it is not a maths expression.
+    """
+    if not text or len(text) > 240:
+        return None
+    import sympy as sp
+
+    plain, percent = _strip_units(_latex_to_plain(text))
+    plain = _insert_multiplication(plain).strip()
+    if not plain or re.search(r"[^\w\s+\-*/().]", plain):
+        return None
+    try:
+        tree = ast.parse(plain, mode="eval")
+    except SyntaxError:
+        return None
+    x = sp.Symbol("x")
+    names = {n: sp.Symbol(n) for n in _SYMPY_NAMES - {"pi", "e", "E", "oo"}}
+    names.update({"x": x, "pi": sp.pi, "e": sp.E, "E": sp.E, "oo": sp.oo})
+    funcs = {"sin": sp.sin, "cos": sp.cos, "tan": sp.tan, "sec": sp.sec, "csc": sp.csc,
+             "cot": sp.cot, "asin": sp.asin, "acos": sp.acos, "atan": sp.atan, "sinh": sp.sinh,
+             "cosh": sp.cosh, "tanh": sp.tanh, "log": sp.log, "ln": sp.log, "exp": sp.exp,
+             "sqrt": sp.sqrt, "abs": sp.Abs, "Abs": sp.Abs}
+    ops = {ast.Add: lambda a, b: a + b, ast.Sub: lambda a, b: a - b,
+           ast.Mult: lambda a, b: a * b, ast.Div: lambda a, b: a / b}
+
+    def build(node):
+        if isinstance(node, ast.Expression):
+            return build(node.body)
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)) \
+                and not isinstance(node.value, bool):
+            return sp.nsimplify(node.value) if isinstance(node.value, float) else sp.Integer(node.value)
+        if isinstance(node, ast.Name) and node.id in names:
+            return names[node.id]
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
+            v = build(node.operand)
+            return -v if isinstance(node.op, ast.USub) else v
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Pow):
+            base, exp_ = build(node.left), build(node.right)
+            if exp_.is_number and abs(float(exp_)) > 200:
+                raise ValueError("exponent too large")
+            return base ** exp_
+        if isinstance(node, ast.BinOp) and type(node.op) in ops:
+            return ops[type(node.op)](build(node.left), build(node.right))
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) \
+                and node.func.id in funcs and len(node.args) == 1 and not node.keywords:
+            return funcs[node.func.id](build(node.args[0]))
+        raise ValueError("unsupported")
+
+    try:
+        return build(tree)  # '20%' parses as 20; answers_equivalent also tries 20/100
+    except (ValueError, TypeError, ZeroDivisionError, RecursionError):
+        return None
+
+
+_FINAL_LINE = re.compile(
+    r"(?:final answer|the answer|answer)\s*(?:is|:|=)\s*[:=]?\s*\**\s*(.+)", re.IGNORECASE
+)
+
+
+def final_expression(text: str | None) -> str | None:
+    """
+    The text of the final answer: the last \\boxed{...}, else what follows the last
+    "final answer is / answer:" marker on its line. None when neither is present.
+    """
+    if not text:
+        return None
+    start = text.rfind("\\boxed{")
+    if start >= 0:
+        pos, depth = start + len("\\boxed"), 0
+        for end in range(pos, len(text)):
+            depth += {"{": 1, "}": -1}.get(text[end], 0)
+            if depth == 0:
+                return text[pos + 1:end].strip()
+    hits = _FINAL_LINE.findall(text)
+    if not hits:
+        return _closing_expression(text)
+    answer = re.split(r"(?<!\d)\.(?!\d)|;|\s+\(|, (?:which|so|since|because)", hits[-1])[0]
+    answer = answer.strip().strip("*").strip()
+    # "x = 4", "dy/dx = 2x" → the right-hand side; "≈ 7.39" approximations → the exact part
+    answer = re.sub(r"^(?:[a-zA-Z]|dy/dx|f'\(x\)|y')\s*=\s*", "", answer)
+    return answer.split("≈")[0].strip() or None
+
+
+_CLOSING_IS = re.compile(r"\bis\s*(?:\\\(|\$)\s*(.+?)\s*(?:\\\)|\$)\s*\.?\s*$", re.DOTALL)
+_LAST_DISPLAY = re.compile(r"(?:\\\[|\$\$)(.+?)(?:\\\]|\$\$)", re.DOTALL)
+
+
+def _closing_expression(text: str) -> str | None:
+    """
+    No explicit marker: the answer stated at the very end — "… is \\(e^2\\)." or a
+    closing display line "\\[ dy/dx = 2x sin x + x^2 cos x \\]" (its right-hand side).
+    Only the last ~300 characters count, so a formula quoted mid-solution is ignored.
+    """
+    tail = text.strip()[-300:]
+    m = _CLOSING_IS.search(tail)
+    if m:
+        return m.group(1).split("=")[-1].strip() or None
+    blocks = _LAST_DISPLAY.findall(tail)
+    if blocks and tail.rstrip().endswith(("\\]", "$$")):
+        return blocks[-1].split("=")[-1].strip() or None
+    return _concluding_number(tail)
+
+
+_CONCLUSION = re.compile(r"^\W*(?:therefore|thus|so|hence|finally|in total|altogether)\b", re.I)
+_STATED_AS = re.compile(
+    r"(?:\b(?:is|are|was|were|be|equals|comes to|approximately|about|roughly)|=|≈)\s*"
+    r"(?:approximately|about|roughly|≈)?\s*(?:₹|rs\.?|\$|inr)?\s*(-?\d[\d,]*(?:\.\d+)?)",
+    re.IGNORECASE,
+)
+_NOT_RATIO = re.compile(r"(?<![\d:/.,])(-?\d[\d,]*(?:\.\d+)?)(?!\s*[:/]\s*\d)")
+
+
+def _concluding_number(tail: str) -> str | None:
+    """
+    'Therefore, the EMI is approximately ₹946.94, rounded to 2 decimal places.' → 946.94
+    'Therefore, we need to add 10 litres … to get the ratio 3:2.' → 10
+    'So, it would take 5 people 48 hours to paint the house.' → 48
+    The number stated after 'is / be / = / ≈ / approximately' wins; otherwise the last
+    number that is not part of a ratio.
+    """
+    clean = tail.replace("\\(", " ").replace("\\)", " ").replace("$", " ")
+    sentences = [s for s in re.split(r"(?<=[.!?])\s+|\n+", clean) if s.strip()]
+    for sentence in reversed(sentences[-3:]):
+        if not _CONCLUSION.match(sentence):
+            continue
+        stated = _STATED_AS.findall(sentence)
+        if stated:
+            return stated[0]
+        numbers = _NOT_RATIO.findall(sentence)
+        return numbers[-1] if numbers else None
+    return None
+
+
+def final_value(text: str | None) -> float | None:
+    """Numeric value of the final answer (π/4 → 0.785…), else the last number."""
+    expr = to_sympy(final_expression(text))
+    if expr is not None and expr.is_number:
+        try:
+            return float(expr.evalf())
+        except (TypeError, ValueError):
+            pass
+    number = extract_final_number(text or "")
+    return float(number) if number is not None else None
+
+
+def answers_equivalent(candidate: str | None, key: str, symbolic: bool = False,
+                       rel_tol: float = 5e-3) -> bool:
+    """
+    Compare an answer text with a trusted key (a sympy expression string written in
+    this repo). Numbers: relative tolerance (answers rounded to 2–3 places count).
+    Expressions: equal after simplification, or at three sample points.
+    """
+    import sympy as sp
+
+    if candidate is None:
+        return False
+    truth = sp.sympify(key)  # trusted: keys come from evaluation/hard_sets.py
+    got = to_sympy(candidate)
+    if got is None:
+        value = extract_final_number(candidate)
+        got = sp.Float(value) if value is not None else None
+    if got is None:
+        return False
+    if symbolic or truth.free_symbols:
+        if not got.free_symbols:
+            return False
+        try:
+            if sp.simplify(got - truth) == 0:
+                return True
+            x = sp.Symbol("x")
+            return all(abs(complex(sp.N((got - truth).subs(x, v)))) < 1e-6 for v in (0.7, 1.3, 2.1))
+        except Exception:
+            return False
+    if got.free_symbols:
+        return False
+    try:
+        g, t = float(got.evalf()), float(truth.evalf())
+    except (TypeError, ValueError):
+        return False
+    # Relative tolerance only (plus a tiny floor): an absolute 0.005 once accepted
+    # 187/4165 = 0.0449 for 198/4165 = 0.0475
+    close = lambda a, b: abs(a - b) <= max(rel_tol * abs(b), 5e-5)
+    return close(g, t) or ("%" in candidate and close(g / 100, t))
+
+
+def symbolic_key(text: str | None) -> str | None:
+    """A comparable key for a symbolic final answer ('2*x*sin(x) + x**2*cos(x)')."""
+    import sympy as sp
+
+    expr = to_sympy(final_expression(text))
+    if expr is None:
+        return None
+    if expr.is_number:
+        try:
+            return _format_value(float(expr.evalf()))
+        except (TypeError, ValueError):
+            return None
+    try:
+        return sp.sstr(sp.simplify(expr))
+    except Exception:
+        return None
+
+
+def option_value(text: str | None) -> float | None:
+    """Numeric value of an option such as '4π', '671/1296' or '154 cm²'."""
+    expr = to_sympy(text)
+    if expr is not None and expr.is_number:
+        try:
+            return float(expr.evalf())
+        except (TypeError, ValueError):
+            pass
+    number = extract_final_number(text or "")
+    return float(number) if number is not None else None
+
+
+def values_close(a: float | str | None, b: float | str | None, rel_tol: float = 5e-3) -> bool:
+    if a is None or b is None:
+        return False
+    try:
+        a, b = float(a), float(b)
+    except (TypeError, ValueError):
+        return False
+    return abs(a - b) <= max(rel_tol * abs(b), 5e-4)
+
+
+def answers_match(a: str | None, b: str | None) -> bool:
+    """numbers_match, plus equivalence of symbolic keys ('x*(x*cos(x) + 2*sin(x))')."""
+    if numbers_match(a, b):
+        return True
+    if a is None or b is None or not (re.search(r"[a-z]", a) and re.search(r"[a-z]", b)):
+        return False
+    ea, eb = to_sympy(a), to_sympy(b)
+    if ea is None or eb is None:
+        return False
+    import sympy as sp
+
+    try:
+        return sp.simplify(ea - eb) == 0
+    except Exception:
+        return False
 
 
 def numbers_match(a: str | None, b: str | None) -> bool:
@@ -247,7 +589,7 @@ def canonicalize(answers: list[str | None]) -> list[str | None]:
         if ans is None:
             out.append(None)
             continue
-        rep = next((r for r in reps if numbers_match(r, ans)), None)
+        rep = next((r for r in reps if answers_match(r, ans)), None)
         if rep is None:
             reps.append(ans)
             rep = ans
@@ -480,6 +822,26 @@ _TIME_SENSITIVE = re.compile(
 )
 
 TASK_TYPES = ("math", "factual", "time_sensitive")
+
+# Senior-school / competitive-exam maths: the fast path is not trusted here, because
+# on hard problems all samples can share one mistake
+_ADVANCED_MATH = re.compile(
+    r"\b(limit of|lim|derivative|differentiat\w*|dy/dx|integral|integrate|antiderivative|"
+    r"matrix|matrices|determinant|inverse of|vectors?|dot product|cross product|probability|"
+    r"binomial|bayes|expected value|variance|distance of the point|maximum value|minimum value|"
+    r"maxima|minima|local maximum|local minimum|continuous|differentiable|differential equation|"
+    r"logarithm|progression|coefficient|expansion|permutations?|combinations?|arrangements?|"
+    r"in how many ways|magnitude|entries of|can be formed|without repetition|digit numbers?|"
+    r"positive integers|integer solutions|solutions? in|area enclosed|area bounded|"
+    r"area of the region|between the curves|shortest distance|between the lines)\b|[∫]"
+    # notation without the words: [[2, 1], [1, 2]], a × b, 2i + j - k, A^5
+    r"|\[\s*\[|\b[a-z]\s*×\s*[a-z]\b|\d*\s*i\s*[+-]\s*\d*\s*j\s*[+-]\s*\d*\s*k\b|\b[A-Z]\^\d",
+    re.IGNORECASE,
+)
+
+
+def is_advanced_math(prompt: str) -> bool:
+    return bool(_ADVANCED_MATH.search(prompt or ""))
 
 
 def classify_task_heuristic(prompt: str) -> tuple[str, bool]:

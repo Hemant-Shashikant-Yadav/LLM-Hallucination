@@ -15,15 +15,20 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import time
+from collections import Counter
 
 from loguru import logger
 
 from app.answer_utils import (
     Calculation,
     calculate,
+    canonicalize,
+    extract_choice,
     extract_final_answer,
+    is_advanced_math,
     is_numeric_reasoning_query,
     numbers_match,
+    parse_options,
 )
 from app.config import settings
 from app.layer1_triage.activation_hook import ActivationExtractor
@@ -573,13 +578,9 @@ class DefenseInDepthRouter:
             plan_text = "\n".join(f"{i}. {s.description}" for i, s in enumerate(graph.steps, start=1))
             candidates = se_estimate.responses if se_estimate is not None else [draft_response]
             if settings.l3_extra_samples:
-                async with stage("layer3.extra_samples", n=settings.l3_extra_samples) as out:
-                    extra = await self._se_triage.sample(
-                        request.prompt, request.model,
-                        n=settings.l3_extra_samples, seed_base=2000,
-                    )
-                    candidates = [*candidates, *extra]
-                    out.update(ok=len(extra))
+                async with stage("layer3.extra_samples", min=settings.l3_extra_samples) as out:
+                    candidates, drawn, share = await self._adaptive_samples(request, candidates)
+                    out.update(drawn=drawn, top_share=round(share, 2))
             async with stage("layer3.program_vote", candidates=len(candidates)) as out:
                 refined, reasoning_traces, judgment = await self._program_verifier.verify(
                     request.prompt, plan_text, candidates, draft_response
@@ -606,6 +607,38 @@ class DefenseInDepthRouter:
             request, draft_response, draft_result, triage_result, start,
             layer3_start, graph, layer3_result,
         )
+
+    async def _adaptive_samples(
+        self, request: QueryRequest, candidates: list[str]
+    ) -> tuple[list[str], int, float]:
+        """
+        Self-consistency with an adaptive budget: draw the minimum number of extra
+        samples, then keep drawing in steps while the vote is close, up to the ceiling.
+        Clear votes stop early; contested ones get more evidence.
+        """
+        options = parse_options(request.prompt)
+        key = (lambda t: extract_choice(t, options)) if options else extract_final_answer
+        max_tokens = (
+            settings.se_max_tokens_advanced if is_advanced_math(request.prompt) else None
+        )
+        ceiling = max(settings.l3_max_extra_samples, settings.l3_extra_samples)
+        drawn, share = 0, 0.0
+        while drawn < ceiling:
+            n = settings.l3_extra_samples if drawn == 0 else min(settings.l3_sample_step, ceiling - drawn)
+            extra = await self._se_triage.sample(
+                request.prompt, request.model, n=n, seed_base=2000 + drawn, max_tokens=max_tokens
+            )
+            candidates = [*candidates, *extra]
+            drawn += n
+            keys = [k for k in canonicalize([key(c) for c in candidates]) if k is not None]
+            share = Counter(keys).most_common(1)[0][1] / len(candidates) if keys else 0.0
+            if share >= settings.l3_stop_agreement:
+                break
+            if len(extra) * 3 < n:
+                # Most samples came back cut off (dropped): more of the same won't vote
+                logger.info("Only {}/{} samples usable; stopping adaptive sampling", len(extra), n)
+                break
+        return candidates, drawn, share
 
     def _finish_layer3(
         self, request, draft_response, draft_result, triage_result, start,
