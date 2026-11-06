@@ -14,12 +14,13 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import re
 import sys
 import time
 from pathlib import Path
 
 import httpx
+
+from app.answer_utils import extract_yes_no
 
 OUT_DIR = Path(__file__).resolve().parent / "hard_results"
 _SET = "hard"  # 'hard' (evaluation/hard_sets.py) or 'ladder' (evaluation/ladder_sets.py)
@@ -82,17 +83,12 @@ async def collect(api_base: str, tag: str, only: list[str] | None = None) -> Non
 # ── Scoring ──────────────────────────────────────────────────────────────────
 
 
-_EXPLICIT_YES_NO = re.compile(
-    r"^\W*(yes|no)\b|(?:final answer|the answer|answer)\s*(?:is|:)\s*\**\s*(yes|no)\b",
-    re.IGNORECASE,
-)
-_JUDGE_MODEL = "llama3.1:8b"   # independent of the pipeline model (qwen2.5:3b)
+_JUDGE_MODEL = "llama3.1:8b"   # independent of the pipeline model
 _CACHE = OUT_DIR / "yesno_judge_cache.json"
 
 
 def _explicit_yes_no(text: str) -> str | None:
-    m = _EXPLICIT_YES_NO.search(text or "")
-    return (m.group(1) or m.group(2)).lower() if m else None
+    return extract_yes_no(text)  # the pipeline's own reader: one definition of "says yes/no"
 
 
 async def _judge_yes_no(pairs: list[tuple[str, str]]) -> dict[str, str]:

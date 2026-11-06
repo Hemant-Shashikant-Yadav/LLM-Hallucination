@@ -182,6 +182,10 @@ Probed offline on 18 basic questions (`app/answer_utils.py`):
 ### P2: Accuracy
 7. **Layer 2 retrieval quality** (the main blocker for TruthfulQA gains; on test the web
    evidence itself imported myths in 4 of 30 edits):
+   - ✅ Wikipedia API evidence implemented 2026-11-06 (`wikipedia_evidence`, **off** until
+     measured): article intros weighted 0.9 vs web 0.7. Claim searches find the right article
+     ("knuckle cracking" → Joint cracking); question searches often don't. Measure on
+     TruthfulQA test before turning on.
    - Prefer curated sources (Wikipedia API / local Wikipedia index, encyclopaedias,
      fact-check sites) over open-web snippets. Down-weight or skip folklore, quote,
      superstition and SEO pages.
@@ -219,6 +223,9 @@ Probed offline on 18 basic questions (`app/answer_utils.py`):
 12b. **Yes/no vote.** Route uncertain yes/no reasoning questions (StrategyQA style) to a vote
     over yes/no read from each sample, instead of Layer 2's web edit, which broke a correct
     "no" in ladder v2. Needs a reliable yes/no reader for answers that never say yes or no.
+    ✅ Implemented 2026-11-06 (`yes_no_vote`, on): Layer 1 clusters by verdict when the draft
+    and most samples say yes/no outright; uncertain ones go to the vote. **Not yet measured**:
+    run the ladder (StrategyQA rung) and the hard-set reasoning category.
 12c. **Verifier for minority-correct votes.** On 5 ladder misses the right answer was among the
     samples but lost the plurality. A same-model pairwise check ("which of these two solutions
     is correct, step by step?") between the top two clusters is the cheapest candidate.
@@ -239,6 +246,14 @@ Probed offline on 18 basic questions (`app/answer_utils.py`):
     greedy drafts and inflate latency.
 17. **Ablations** (thesis Phase 2): L1 only / L2 always / L3 always / no fast path,
     reusing `--configs naive_rag`.
+
+### P2b: Stronger pipeline model (2026-11-06)
+- The largest remaining lever. `python -m evaluation.model_compare collect --model <tag>`
+  runs a candidate's raw drafts on GSM8K dev (40), the hard sets (74) and the ladder (80);
+  `score` compares it with qwen2.5:3b's stored drafts. Candidates for a 4 GB GPU:
+  qwen3:4b-instruct-2507 (2.5 GB, no thinking mode) and qwen3.5:4b (3.3 GB, set
+  `DID_OLLAMA_THINK=false`). On bigger hardware, larger models of the same families.
+  Keep the single-model rule; the judge must stay a different model.
 
 ### P4: Cost and latency
 18. Skip programs when the 11 samples are unanimous. Cache search results per query.

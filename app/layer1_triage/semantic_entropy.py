@@ -31,8 +31,10 @@ from app.answer_utils import (
     canonicalize,
     extract_choice,
     extract_final_answer,
+    extract_yes_no,
     is_advanced_math,
     is_numeric_reasoning_query,
+    is_yes_no_question,
     leading_sentences,
     parse_options,
 )
@@ -122,6 +124,9 @@ class SemanticEntropyTriage:
             )
         elif is_numeric:
             cluster_ids, numeric_answers = self._cluster_numeric(responses)
+        elif self._yes_no_readable(prompt, responses):
+            # Yes/no question: the meaning of an answer is its verdict
+            cluster_ids, numeric_answers = self._cluster_keys([extract_yes_no(r) for r in responses])
         else:
             cluster_ids = await self._cluster_semantic(prompt, responses)
             numeric_answers = []
@@ -238,6 +243,14 @@ class SemanticEntropyTriage:
         return SemanticEntropyTriage._cluster_keys(
             canonicalize([extract_final_answer(r) for r in responses])
         )
+
+    @staticmethod
+    def _yes_no_readable(prompt: str, responses: list[str]) -> bool:
+        """A yes/no question whose draft, and most samples, say yes or no outright."""
+        if not settings.yes_no_vote or not is_yes_no_question(prompt):
+            return False
+        verdicts = [extract_yes_no(r) for r in responses]
+        return verdicts[0] is not None and 2 * sum(v is not None for v in verdicts) > len(verdicts)
 
     @staticmethod
     def _cluster_keys(answers: list[str | None]) -> tuple[list[int], list[str | None]]:

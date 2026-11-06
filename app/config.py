@@ -201,6 +201,16 @@ class FrameworkSettings(BaseSettings):
         default=str(_PROJECT_ROOT / "data" / "chromadb"),
         description="Directory path for ChromaDB persistent storage.",
     )
+    wikipedia_evidence: bool = Field(
+        default=False,
+        description=(
+            "Add the intros of the best-matching English Wikipedia articles to every evidence "
+            "search, weighted above open-web snippets (which repeat common myths). Off until "
+            "measured on TruthfulQA: claim searches find the right article, question-style "
+            "searches often do not ('What happened on July 20, 1969?' returns film titles)."
+        ),
+    )
+    wikipedia_results: int = Field(default=2, ge=1, le=5)
     max_search_results: int = Field(
         default=5,
         ge=1,
@@ -298,6 +308,14 @@ class FrameworkSettings(BaseSettings):
             "Layer 2's web-evidence edit, which on the ARC/logic ladder fixed none and broke one."
         ),
     )
+    yes_no_vote: bool = Field(
+        default=True,
+        description=(
+            "Yes/no questions whose draft says yes or no outright: Layer 1 clusters answers by "
+            "verdict, and an uncertain one is settled by a vote over the samples' verdicts "
+            "instead of Layer 2's web edit, which rewrote a correct 'no' on the ladder."
+        ),
+    )
     verify_advanced_math: bool = Field(
         default=True,
         description=(
@@ -368,6 +386,13 @@ class FrameworkSettings(BaseSettings):
     ollama_keep_alive: str = Field(
         default="10m",
         description="How long Ollama keeps a model loaded after a call.",
+    )
+    ollama_think: bool | None = Field(
+        default=None,
+        description=(
+            "Sent as Ollama's `think` on every call when set: false for thinking models "
+            "(qwen3.5) so samples stay short; None for models without a thinking mode."
+        ),
     )
 
     # -------------------------------------------------------------------------

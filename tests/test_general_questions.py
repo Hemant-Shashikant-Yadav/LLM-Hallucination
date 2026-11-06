@@ -428,3 +428,47 @@ class FreshSearchTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(out.startswith("X."))
         self.assertIn("may be out of date", out)
         self.assertTrue(any("freshness" in d for d in recorded))
+
+
+class YesNoTests(unittest.IsolatedAsyncioTestCase):
+    def test_reader_and_question_shape(self):
+        from app.answer_utils import extract_yes_no, is_yes_no_question
+
+        self.assertTrue(is_yes_no_question("Could a llama birth twice during the War in Vietnam?"))
+        self.assertFalse(is_yes_no_question("Can you explain how vaccines work?"))
+        self.assertFalse(is_yes_no_question("Who wrote Hamlet?"))
+        self.assertFalse(is_yes_no_question("Is it (a) or (b)?\n(a) x\n(b) y"))
+        for text, want in [("Yes, he did.", "yes"), ("**No**, it cannot.", "no"),
+                           ("So the answer is no.", "no"), ("He died in 322 BC.", None)]:
+            with self.subTest(text=text):
+                self.assertEqual(extract_yes_no(text), want)
+
+    def test_layer1_clusters_by_verdict(self):
+        draft = "No. Llama gestation is about 11 months, and the war lasted years longer."
+        samples = ["No, because of gestation length.", "Yes, it could.", "No."]
+        self.assertTrue(SemanticEntropyTriage._yes_no_readable("Could a llama birth twice?", [draft, *samples]))
+        self.assertFalse(SemanticEntropyTriage._yes_no_readable(
+            "Could a llama birth twice?", ["Llamas gestate for 11 months.", *samples]))
+
+    async def test_vote_over_verdicts(self):
+        from app.answer_utils import extract_yes_no
+        from app.models.schemas import QueryRequest, TriageResult
+        from app.router import DefenseInDepthRouter
+
+        async def sample(*_args, **_kwargs):
+            return ["No, it could not."] * 4
+
+        router = DefenseInDepthRouter.__new__(DefenseInDepthRouter)
+        router._se_triage = SimpleNamespace(sample=sample)
+        draft = "Yes, a llama could give birth twice."
+        triage = TriageResult(
+            decision=TriageDecision.KNOWLEDGE_UNCERTAIN, semantic_entropy=0.9,
+            hallucination_probability=0.5, error_classification=None,
+            threshold_used=settings.t_safe, draft_response=draft, latency_ms=0.0,
+        )
+        res = await router._process_choice_vote(
+            QueryRequest(prompt="Could a llama birth twice during the War in Vietnam?", include_audit=True),
+            draft, SimpleNamespace(total_tokens=0, latency_ms=0.0), triage, 0.0,
+            SimpleNamespace(responses=[draft, "No.", "Yes."]), key=extract_yes_no,
+        )
+        self.assertEqual(extract_yes_no(res.answer), "no")

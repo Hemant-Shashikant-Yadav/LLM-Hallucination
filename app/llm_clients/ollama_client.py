@@ -158,6 +158,9 @@ class OllamaClient:
 
     async def _call(self, method: str, **kwargs: Any) -> Any:
         kwargs.setdefault("keep_alive", settings.ollama_keep_alive)
+        if settings.ollama_think is not None:
+            # Thinking models (qwen3.5) otherwise reason for thousands of tokens per sample
+            kwargs.setdefault("think", settings.ollama_think)
         model = kwargs.get("model")
         for attempt in range(settings.ollama_max_retries + 1):
             try:
@@ -287,6 +290,7 @@ class OllamaClient:
                 options=options,
                 stream=True,
                 keep_alive=settings.ollama_keep_alive,
+                **({} if settings.ollama_think is None else {"think": settings.ollama_think}),
             ):
                 chunks.append(chunk.response)
                 if chunk.done:

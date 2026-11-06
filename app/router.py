@@ -25,7 +25,9 @@ from app.answer_utils import (
     canonicalize,
     extract_choice,
     extract_final_answer,
+    extract_yes_no,
     is_numeric_reasoning_query,
+    is_yes_no_question,
     numbers_match,
     parse_options,
 )
@@ -341,6 +343,15 @@ class DefenseInDepthRouter:
                 request, draft_response, draft_result, triage_result, start, se_estimate
             )
 
+        elif (settings.yes_no_vote and task_type == "factual" and se_estimate is not None
+              and is_yes_no_question(request.prompt) and extract_yes_no(draft_response)):
+            # Yes/no reasoning ("Could a llama birth twice during the Vietnam War?"): the
+            # samples disagree on the verdict; a vote over verdicts, not a web rewrite
+            return await self._process_choice_vote(
+                request, draft_response, draft_result, triage_result, start, se_estimate,
+                key=extract_yes_no,
+            )
+
         elif triage_result.decision == TriageDecision.KNOWLEDGE_UNCERTAIN:
             # Route to Layer 2: NLI-RAG Verification
             return await self._process_layer2(
@@ -619,15 +630,16 @@ class DefenseInDepthRouter:
         )
 
     async def _adaptive_samples(
-        self, request: QueryRequest, candidates: list[str]
+        self, request: QueryRequest, candidates: list[str], key=None,
     ) -> tuple[list[str], int, float]:
         """
         Self-consistency with an adaptive budget: draw the minimum number of extra
         samples, then keep drawing in steps while the vote is close, up to the ceiling.
         Clear votes stop early; contested ones get more evidence.
         """
-        options = parse_options(request.prompt)
-        key = (lambda t: extract_choice(t, options)) if options else extract_final_answer
+        if key is None:
+            options = parse_options(request.prompt)
+            key = (lambda t: extract_choice(t, options)) if options else extract_final_answer
         max_tokens = math_sample_tokens(request.prompt)
         ceiling = max(settings.l3_max_extra_samples, settings.l3_extra_samples)
         drawn, share = 0, 0.0
@@ -650,18 +662,22 @@ class DefenseInDepthRouter:
 
     async def _process_choice_vote(
         self, request, draft_response, draft_result, triage_result, start, se_estimate,
+        key=None,
     ) -> QueryResponse:
         """
-        Layer 3 for multiple choice that is not maths: self-consistency over the
-        options (Layer 1's samples plus adaptive extras). Nothing to compute, so no
-        programs; the option most answers pick wins, and a tie keeps the draft's.
+        Layer 3 for multiple choice that is not maths, or a yes/no question (`key` =
+        extract_yes_no): self-consistency over the answers (Layer 1's samples plus
+        adaptive extras). Nothing to compute, so no programs; the answer most samples
+        give wins, and a tie keeps the draft's.
         """
         layer3_start = time.perf_counter()
-        options = parse_options(request.prompt)
+        if key is None:
+            options = parse_options(request.prompt)
+            key = lambda t: extract_choice(t, options)  # noqa: E731
         async with stage("layer3.extra_samples", min=settings.l3_extra_samples) as out:
-            candidates, drawn, share = await self._adaptive_samples(request, se_estimate.responses)
+            candidates, drawn, share = await self._adaptive_samples(request, se_estimate.responses, key)
             out.update(drawn=drawn, top_share=round(share, 2))
-        choices = [extract_choice(c, options) for c in candidates]  # [0] is the draft
+        choices = [key(c) for c in candidates]  # [0] is the draft
         counts = Counter(c for c in choices if c is not None)
         winner = choices[0]
         if counts:

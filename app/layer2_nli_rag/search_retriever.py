@@ -17,6 +17,13 @@ from loguru import logger
 from app.config import settings
 from app.models.schemas import AtomicProposition, SearchResult
 
+_WIKI_API = "https://en.wikipedia.org/w/api.php"
+# Wikimedia's robot policy rejects (HTTP 403) clients whose User-Agent gives no contact
+_WIKI_HEADERS = {
+    "User-Agent": "LLM-Hallucination-Research/0.1 "
+                  "(https://github.com/Hemant-Shashikant-Yadav/LLM-Hallucination) httpx"
+}
+
 
 class SearchRetriever:
     """
@@ -84,6 +91,12 @@ class SearchRetriever:
         except Exception as exc:
             logger.error("Web search failed: {}", exc)
 
+        if settings.wikipedia_evidence:
+            try:
+                results.extend(await self._search_wikipedia(query, settings.wikipedia_results))
+            except Exception as exc:
+                logger.warning("Wikipedia search failed: {}: {}", type(exc).__name__, exc)
+
         # Also search local ChromaDB if initialized
         try:
             local_results = await self._search_chromadb(query, limit)
@@ -133,6 +146,41 @@ class SearchRetriever:
                 evidence_map[prop.id] = results
 
         return evidence_map
+
+    # -------------------------------------------------------------------------
+    # Wikipedia (curated evidence)
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    async def _search_wikipedia(query: str, limit: int) -> list[SearchResult]:
+        """
+        Intros of the best-matching English Wikipedia articles. Open-web snippets
+        repeat the very myths TruthfulQA tests (4 of 30 Layer 2 edits imported one);
+        encyclopaedia intros are weighted above them (0.9 vs 0.7).
+        """
+        async with httpx.AsyncClient(timeout=10, headers=_WIKI_HEADERS) as client:
+            hits = await client.get(_WIKI_API, params={
+                "action": "query", "format": "json", "list": "search",
+                "srsearch": query[:300], "srlimit": limit, "srprop": "",
+            })
+            titles = [h["title"] for h in hits.json().get("query", {}).get("search", [])]
+            if not titles:
+                return []
+            pages = await client.get(_WIKI_API, params={
+                "action": "query", "format": "json", "prop": "extracts", "exintro": 1,
+                "explaintext": 1, "redirects": 1, "titles": "|".join(titles),
+            })
+        extracts = {p.get("title"): p.get("extract") or ""
+                    for p in pages.json().get("query", {}).get("pages", {}).values()}
+        return [
+            SearchResult(
+                title=f"{title} - Wikipedia",
+                url="https://en.wikipedia.org/wiki/" + title.replace(" ", "_"),
+                snippet=extracts[title][:800],
+                relevance_score=0.9,
+            )
+            for title in titles if extracts.get(title)
+        ]
 
     # -------------------------------------------------------------------------
     # DuckDuckGo Backend

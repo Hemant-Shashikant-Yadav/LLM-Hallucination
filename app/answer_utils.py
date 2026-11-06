@@ -193,6 +193,28 @@ _REJECT = re.compile(
 )
 
 
+_YES_NO_QUESTION = re.compile(
+    r"^\s*(?:is|are|was|were|do|does|did|can|could|would|will|should|has|have|had|may|might|must)\b"
+    r"(?!\s+(?:you|u)\b)",  # "Can you explain …" is a request, not a yes/no question
+    re.IGNORECASE,
+)
+_YES_NO_ANSWER = re.compile(
+    r"^\W*(yes|no)\b|(?:final answer|the answer|answer)\s*(?:is|:)\s*\**\s*(yes|no)\b",
+    re.IGNORECASE,
+)
+
+
+def is_yes_no_question(prompt: str) -> bool:
+    """'Did Aristotle use a laptop?' — but not 'Can you explain …' or a multiple choice."""
+    return bool(_YES_NO_QUESTION.match(prompt or "")) and not parse_options(prompt)
+
+
+def extract_yes_no(answer: str | None) -> str | None:
+    """'Yes, …' / 'No. …' / '… the answer is no' → 'yes' | 'no'; an answer that never says → None."""
+    m = _YES_NO_ANSWER.search(answer or "")
+    return (m.group(1) or m.group(2)).lower() if m else None
+
+
 def parse_options(question: str) -> dict[str, str]:
     """
     Options of a multiple-choice question: {'a': '120', 'b': '60', ...}.
