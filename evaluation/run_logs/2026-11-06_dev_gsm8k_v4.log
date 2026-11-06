@@ -1,0 +1,43 @@
+[32m07:04:05.992[0m | [1mINFO    [0m | [36m__main__[0m:[36mrun[0m:[36m441[0m - [1mAPI healthy: {'t_safe': 0.35, 'triage_mode': 'semantic_entropy', 'se_num_samples': 4, 'judge_model': 'qwen2.5:3b', 'nli_confidence_threshold': 0.65, 'ollama_model': 'qwen2.5:3b', 'probe_model': 'TinyLlama/TinyLlama-1.1B-Chat-v1.0', 'nli_model': 'cross-encoder/nli-deberta-v3-base', 'search_backend': 'duckduckgo', 'device': 'cpu', 'use_fp16': True}[0m
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[32m07:04:11.545[0m | [1mINFO    [0m | [36m__main__[0m:[36mload_gsm8k[0m:[36m110[0m - [1mLoaded 40 GSM8K samples[0m
+[32m07:04:11.770[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[1/40] gsm8k: Together Lily, David, and Bodhi collected 43 insects. Lily found 7 mor[0m
+[32m07:04:55.125[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[2/40] gsm8k: Mariah’s grandma was teaching her to knit. Mariah used 1/4 of a skein [0m
+[32m07:05:23.860[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[3/40] gsm8k: Cherrie wants to buy Christmas gifts for her 5 friends. 2 of her frien[0m
+[32m07:05:46.516[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[4/40] gsm8k: The rug is 5 feet wider than the chair. The couch is 2 feet longer tha[0m
+[32m07:06:03.767[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[5/40] gsm8k: Suzie loves to chew fruit-flavored gum. She bought four packs of gum t[0m
+[32m07:08:11.685[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[6/40] gsm8k: Frederick is making popsicles to sell and to save money he is making h[0m
+[32m07:08:49.608[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[7/40] gsm8k: Mario needs to buy snowshoes for his 6 sled dogs.  Assuming his dogs e[0m
+[32m07:10:33.290[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[8/40] gsm8k: Janet takes two bus trips five days a week. If each bus trip costs her[0m
+[32m07:11:46.810[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[9/40] gsm8k: The farm has 30 cows and the zoo has 20 sheep.  The zoo has twice as m[0m
+[32m07:13:14.156[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[10/40] gsm8k: Sophia and Rose went together to the market to buy onions and potatoes[0m
+[32m07:14:53.464[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[11/40] gsm8k: For a New Year's resolution, Andy wants to lose 30 lbs. by his birthda[0m
+[32m07:16:07.830[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[12/40] gsm8k: Gerald works at a daycare that pays him $30 every day. He worked for a[0m
+[32m07:16:21.528[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[13/40] gsm8k: Hannah needs to drink 60 ml of water for each kilometer she runs. If h[0m
+[32m07:16:40.988[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[14/40] gsm8k: Julie had $500. She spent 20% of it on clothes and then 25% of the rem[0m
+[32m07:17:03.704[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[15/40] gsm8k: A house and a lot cost $120,000. If the house cost three times as much[0m
+[32m07:17:28.145[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[16/40] gsm8k: Tara bought 8 packs of 5 canvas bags for $4 each. She painted them and[0m
+[32m07:19:04.831[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[17/40] gsm8k: On average Joe throws 25 punches per minute.  A fight lasts 5 rounds o[0m
+[32m07:19:20.783[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[18/40] gsm8k: The eighth-grade class held a bake-off. Kelsie made two times more coo[0m
+[32m07:19:38.823[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[19/40] gsm8k: Ali has four $10 bills and six $20 bills that he saved after working f[0m
+[32m07:20:06.178[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[20/40] gsm8k: Royce takes 40 minutes more than double Rob to shingle a house. If Rob[0m
+[32m07:20:26.921[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[21/40] gsm8k: Martha is knitting winter wear for her 3 grandchildren. They're triple[0m
+[32m07:22:17.014[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[22/40] gsm8k: Chris is way behind on his math homework. He has 100 math problems to [0m
+[32m07:22:41.998[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[23/40] gsm8k: It's strawberry-picking time on Grandma Concetta's farm.  Tony can pic[0m
+[32m07:24:02.277[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[24/40] gsm8k: The bakers at the Beverly Hills Bakery baked 200 loaves of bread on Mo[0m
+[32m07:25:29.243[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[25/40] gsm8k: Jackson is planting tulips. He can fit 6 red tulips in a row and 8 blu[0m
+[32m07:26:37.642[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[26/40] gsm8k: Heather bought a jumbo bag of raisins with 27 cups of raisins in it. S[0m
+[32m07:27:03.845[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[27/40] gsm8k: Ada's daily electric consumption is 12 kilowatts per hour. She is plan[0m
+[32m07:28:46.189[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[28/40] gsm8k: If one person can paint half a house in 5 days, how many hours would i[0m
+[32m07:29:18.424[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[29/40] gsm8k: Ophelia and Jenna are living in the same apartment building. They each[0m
+[32m07:31:21.510[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[30/40] gsm8k: Tom bought a CD for $4, and a headphone set. In total, he paid $48. Ho[0m
+[32m07:33:00.574[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[31/40] gsm8k: After tracking his workout routine for 8 weeks, Josh discovered that h[0m
+[32m07:33:27.531[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[32/40] gsm8k: 48 people are riding a bus. On the first stop, 8 passengers get off, a[0m
+[32m07:33:52.722[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[33/40] gsm8k: Jame will turn 27 in 5 years.  In 8 years his cousin will be 5 years y[0m
+[32m07:35:48.768[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[34/40] gsm8k: Errol bought a computer, 2 monitors, and a printer for $2,400. He paid[0m
+[32m07:36:20.765[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[35/40] gsm8k: Twenty kids went out on a school trip. In one of the several activitie[0m
+[32m07:38:26.330[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[36/40] gsm8k: Nick had twice as many candies as George. Then George ate 5 candies. N[0m
+[32m07:39:04.058[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[37/40] gsm8k: Chenny is 10 years old. Alyana is 4 years younger than Chenny. How old[0m
+[32m07:39:15.900[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[38/40] gsm8k: Four books are arranged on a shelf. The first book is 31 mm thick whil[0m
+[32m07:39:42.359[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[39/40] gsm8k: Emma can make and upload 72 vlogs per month. But she was only able to [0m
+[32m07:41:00.318[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m203[0m - [1m[40/40] gsm8k: My wife wants to evenly split the check but wants me to pay an additio[0m

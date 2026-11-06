@@ -1,0 +1,19 @@
+P&C      raw b ✓ | framework b ✓ | correct b | math → layer1_only 34s | In how many different ways can the letters of the word APPLE
+P&C      raw b ✓ | framework b ✓ | correct b | math → layer1_only 19s | In how many ways can 5 people be seated around a circular ta
+P&C      raw c ✓ | framework c ✓ | correct c | math → layer1_only 35s | In how many ways can a committee of 3 members be selected fr
+P&C      raw b ✓ | framework b ✓ | correct b | math → layer1_only 21s | How many 3-digit numbers can be formed using the digits 1, 2
+P&C      raw a ✓ | framework a ✓ | correct a | math → layer1_only 28s | What is the value of 8P3?
+P&C      raw c ✓ | framework c ✓ | correct c | math → layer1_only 16s | How many diagonals does a hexagon have?
+P&C      raw b ✓ | framework b ✓ | correct b | math → layer1_only 30s | In how many ways can 4 boys and 3 girls be arranged in a row
+P&C      raw b ✓ | framework b ✓ | correct b | math → layer1_only 27s | In a party, 10 people shake hands with each other exactly on
+Circles  raw b ✓ | framework b ✓ | correct b | math → layer1_only 28s | What is the area of a circle of radius 7 cm? (Take π = 22/7)
+Circles  raw c ✓ | framework c ✓ | correct c | math → layer1_layer3 57s | What is the circumference of a circle of diameter 14 cm? (Ta
+Circles  raw a ✓ | framework a ✓ | correct a | math → layer1_only 28s | A tangent PQ at a point P of a circle of radius 5 cm meets a
+Circles  raw a ✓ | framework a ✓ | correct a | math → layer1_only 35s | What is the area of a sector of angle 90° of a circle of rad
+Circles  raw b ✓ | framework b ✓ | correct b | math → layer1_layer3 97s | What is the length of an arc that subtends an angle of 60° a
+Circles  raw b ✓ | framework b ✓ | correct b | math → layer1_only 36s | A chord of length 16 cm is drawn in a circle of radius 10 cm
+Circles  raw a ✓ | framework a ✓ | correct a | math → layer1_only 39s | The radii of two circles are 19 cm and 9 cm. What is the rad
+P&C      raw 8/8 | framework 8/8
+Circles  raw 7/7 | framework 7/7
+ALL      raw 15/15 | framework 15/15
+saved → evaluation\mcq_10th_results.json

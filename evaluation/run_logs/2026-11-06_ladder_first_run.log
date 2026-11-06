@@ -1,0 +1,80 @@
+MATH L1     M1-numb11 math → layer1_only 17s
+MATH L1     M1-alge678 math → layer1_only 17s
+MATH L1     M1-prea110 math → layer1_only 26s
+MATH L1     M1-alge217 math → layer1_only 19s
+MATH L1     M1-alge326 math → layer1_only 28s
+MATH L1     M1-alge431 math → layer1_only 20s
+MATH L1     M1-numb372 math → layer1_layer3 155s
+MATH L1     M1-alge254 math → layer1_only 30s
+MATH L2     M2-prea713 math → layer1_only 22s
+MATH L2     M2-coun421 math → layer1_layer3 175s
+MATH L2     M2-alge749 math → layer1_only 25s
+MATH L2     M2-alge140 math → layer1_only 37s
+MATH L2     M2-alge304 math → layer1_only 33s
+MATH L2     M2-coun237 math → layer1_only 33s
+MATH L2     M2-coun195 math → layer1_layer3 124s
+MATH L2     M2-alge237 math → layer1_only 22s
+MATH L3     M3-coun116 math → layer1_layer3 138s
+MATH L3     M3-alge451 math → layer1_only 31s
+MATH L3     M3-prea606 math → layer1_layer3 153s
+MATH L3     M3-prea31 math → layer1_only 28s
+MATH L3     M3-alge286 math → layer1_layer3 140s
+MATH L3     M3-prea677 math → layer1_layer3 158s
+MATH L3     M3-alge633 math → layer1_only 39s
+MATH L3     M3-alge1175 math → layer1_only 21s
+MATH L4     M4-prea640 math → layer1_layer3 100s
+MATH L4     M4-alge316 math → layer1_layer3 165s
+MATH L4     M4-prea616 math → layer1_only 21s
+MATH L4     M4-prea670 math → layer1_layer3 116s
+MATH L4     M4-numb190 time_sensitive → layer1_layer2 60s
+MATH L4     M4-alge263 math → layer1_layer3 108s
+MATH L4     M4-alge1091 math → layer1_layer3 277s
+MATH L4     M4-alge241 math → layer1_layer3 187s
+MATH L5     M5-prea321 math → layer1_only 41s
+MATH L5     M5-alge681 math → layer1_layer3 160s
+MATH L5     M5-coun208 math → layer1_layer3 156s
+MATH L5     M5-numb240 math → layer1_layer3 177s
+MATH L5     M5-alge725 math → layer1_layer3 147s
+MATH L5     M5-prea225 math → layer1_layer3 134s
+MATH L5     M5-alge604 math → layer1_layer3 164s
+MATH L5     M5-prea394 math → layer1_layer3 131s
+T1 ARC-Easy ae-MCAS_2000_8_23 factual → layer1_layer2 48s
+T1 ARC-Easy ae-Mercury_405140 factual → layer1_only 15s
+T1 ARC-Easy ae-Mercury_SC_407507 factual → layer1_only 7s
+T1 ARC-Easy ae-MDSA_2009_8_25 factual → layer1_layer2 20s
+T1 ARC-Easy ae-AIMS_2009_8_26 factual → layer1_layer2 38s
+T1 ARC-Easy ae-Mercury_SC_400988 factual → layer1_layer2 27s
+T1 ARC-Easy ae-Mercury_7025025 factual → layer1_only 14s
+T1 ARC-Easy ae-Mercury_416414 factual → layer1_layer2 27s
+T2 ARC-Challenge ac-Mercury_SC_LBS10392 factual → layer1_only 18s
+T2 ARC-Challenge ac-Mercury_416650 factual → layer1_layer2 31s
+T2 ARC-Challenge ac-Mercury_406427 factual → layer1_only 29s
+T2 ARC-Challenge ac-Mercury_7026355 factual → layer1_only 23s
+T2 ARC-Challenge ac-MDSA_2012_8_16 factual → layer1_layer2 34s
+T2 ARC-Challenge ac-ACTAAP_2008_5_10 factual → layer1_layer2 26s
+T2 ARC-Challenge ac-Mercury_7086608 factual → layer1_only 15s
+T2 ARC-Challenge ac-Mercury_SC_400142 factual → layer1_layer2 15s
+T3 StrategyQA sq-e0400033f078e56faad2 factual → layer1_layer2 29s
+T3 StrategyQA sq-3aecd30e1212e2985d4b factual → layer1_layer2 38s
+T3 StrategyQA sq-69e0b6f868ee71314fc1 factual → layer1_layer2 21s
+T3 StrategyQA sq-0a4fa11abccd8dd84dc8 factual → layer1_layer2 56s
+T3 StrategyQA sq-debac3970a4fc11774fd factual → layer1_layer2 30s
+T3 StrategyQA sq-dffa127553f4c2dc9993 factual → layer1_layer2 32s
+T3 StrategyQA sq-7cfc1003f0a479b3487c factual → layer1_layer2 40s
+T3 StrategyQA sq-f1895e4df6287a560a08 factual → layer1_layer2 74s
+T4 logical fallacies log-62 factual → layer1_only 35s
+T4 logical fallacies log-20 factual → layer1_only 7s
+T4 logical fallacies log-147 factual → layer1_only 15s
+T4 logical fallacies log-76 factual → layer1_only 19s
+T4 logical fallacies log-134 factual → layer1_layer2 40s
+T4 logical fallacies log-126 math → layer1_layer3 150s
+T4 logical fallacies log-87 factual → layer1_layer2 19s
+T4 logical fallacies log-114 time_sensitive → layer1_layer2 42s
+T5 formal logic for-36 factual → layer1_layer2 54s
+T5 formal logic for-77 math → layer1_layer3 155s
+T5 formal logic for-125 math → layer1_only 48s
+T5 formal logic for-9 factual → layer1_layer2 34s
+T5 formal logic for-15 math → layer1_layer3 170s
+T5 formal logic for-65 factual → layer1_layer2 33s
+T5 formal logic for-53 factual → layer1_only 35s
+T5 formal logic for-21 factual → layer1_only 15s

@@ -1,0 +1,37 @@
+OK    What is the capital of Australia?  [factual → layer1_only, 3s]
+      'The capital of Australia is Canberra.'
+OK    Who wrote "Pride and Prejudice"?  [factual → layer1_only, 2s]
+      '"Pride and Prejudice" was written by Jane Austen.'
+FAIL  What happened on July 20, 1969?  [time_sensitive → layer1_layer2, 51s]
+      'On July 20, 1969, the United States conducted the Apollo 11 moon landing, where astronauts Neil Armstrong and Buzz Aldrin became the first humans to walk on the'
+      ! route 'time_sensitive' != 'factual'
+FAIL  What was India's population in 2011?  [factual → layer1_only, 5s]
+      'According to the data from the 2011 Census of India, the population of India was approximately 1,210,804,262.'
+      ! answer check failed (['1.21', '1.2 billion', '121'])
+FAIL  Which is taller, Mount Everest (8849 m) or K2 (8611 m)?  [math → layer1_layer3, 31s]
+      'Mount Everest is taller than K2. Mount Everest has an elevation of 8,849 meters (29,029 feet) above sea level, while K2, also known as Mount Godwin-Austen, has '
+      ! route 'math' != 'factual'
+OK    Who is the current Prime Minister of the UK?  [time_sensitive → layer1_layer2, 21s]
+      'The current Prime Minister of the United Kingdom is Andy Burnham, who took office on 20 July 2026.'
+OK    Explain how vaccines work.  [factual → layer1_layer2, 72s]
+      'Vaccines work by stimulating the immune system to recognize and fight off specific pathogens, such as viruses or bacteria, without actually causing the disease.'
+OK    What is 15% of 240?  [math → layer1_only, 12s]
+      'To find 15% of 240, you can use the following calculation:\n\n\\[ \\text{15\\% of 240} = \\frac{15}{100} \\times 240 \\]\n\n\\[ \\text{15\\% of 240} = 0.15 \\times 240 \\]\n\n\\['
+OK    What is three times seven?  [math → layer1_only, 1s]
+      'Three times seven is 21.'
+OK    What is the square root of 144?  [math → layer1_only, 1s]
+      'The square root of 144 is 12.'
+OK    Solve 2x + 3 = 11.  [math → layer1_only, 15s]
+      'To solve the equation \\(2x + 3 = 11\\), we will follow these steps:\n\n1. **Subtract 3 from both sides** of the equation to isolate the term with the variable \\(x\\'
+OK    Simplify 3/4 + 1/8.  [math → layer1_only, 19s]
+      'To simplify the expression \\( \\frac{3}{4} + \\frac{1}{8} \\), we need to find a common denominator for the fractions. The denominators are 4 and 8. The least comm'
+OK    Convert 100 °F to Celsius.  [math → layer1_only, 16s]
+      "To convert a temperature from Fahrenheit (°F) to Celsius (°C), you can use the following formula:\n\n\\[ °C = \\frac{5}{9} \\times (°F - 32) \\]\n\nLet's apply this for"
+OK    What is the derivative of x^2?  [math → layer1_only, 13s]
+      'The derivative of \\(x^2\\) with respect to \\(x\\) is \\(2x\\).\n\nTo find this derivative, we can use the power rule of differentiation, which states that if \\(f(x) ='
+OK    A train travels 60 km/h for 2.5 hours. How far does it go?  [math → layer1_only, 18s]
+      'To determine the distance traveled by the train, we can use the formula for distance, which is:\n\n\\[ \\text{Distance} = \\text{Speed} \\times \\text{Time} \\]\n\nGiven:'
+OK    Tom has 3 boxes of 12 eggs and breaks 5. How many eggs are left?  [math → layer1_only, 10s]
+      'Tom initially has 3 boxes of eggs, with each box containing 12 eggs. So, the total number of eggs he has is:\n\n\\[ 3 \\times 12 = 36 \\]\n\nTom breaks 5 eggs. Therefo'
+
+13/16 passed

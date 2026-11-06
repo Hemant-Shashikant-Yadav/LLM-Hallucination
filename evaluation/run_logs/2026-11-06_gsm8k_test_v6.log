@@ -1,0 +1,141 @@
+[32m13:06:40.910[0m | [1mINFO    [0m | [36m__main__[0m:[36mrun[0m:[36m444[0m - [1mAPI healthy: {'t_safe': 0.35, 'triage_mode': 'semantic_entropy', 'se_num_samples': 4, 'judge_model': 'qwen2.5:3b', 'nli_confidence_threshold': 0.65, 'ollama_model': 'qwen2.5:3b', 'probe_model': 'TinyLlama/TinyLlama-1.1B-Chat-v1.0', 'nli_model': 'cross-encoder/nli-deberta-v3-base', 'search_backend': 'duckduckgo', 'device': 'cpu', 'use_fp16': True}[0m
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[32m13:06:46.094[0m | [1mINFO    [0m | [36m__main__[0m:[36mload_gsm8k[0m:[36m113[0m - [1mLoaded 100 GSM8K samples[0m
+[32m13:06:46.337[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[1/100] gsm8k: Janet’s ducks lay 16 eggs per day. She eats three for breakfast every [0m
+[32m13:07:58.352[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[2/100] gsm8k: A robe takes 2 bolts of blue fiber and half that much white fiber.  Ho[0m
+[32m13:08:15.590[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[3/100] gsm8k: Josh decides to try flipping a house.  He buys a house for $80,000 and[0m
+[32m13:10:27.406[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[4/100] gsm8k: James decides to run 3 sprints 3 times a week.  He runs 60 meters each[0m
+[32m13:11:25.789[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[5/100] gsm8k: Every day, Wendi feeds each of her chickens three cups of mixed chicke[0m
+[32m13:11:55.401[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[6/100] gsm8k: Kylar went to the store to buy glasses for his new apartment. One glas[0m
+[32m13:12:22.174[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[7/100] gsm8k: Toulouse has twice as many sheep as Charleston. Charleston has 4 times[0m
+[32m13:12:41.544[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[8/100] gsm8k: Carla is downloading a 200 GB file. Normally she can download 2 GB/min[0m
+[32m13:14:37.973[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[9/100] gsm8k: John drives for 3 hours at a speed of 60 mph and then turns around bec[0m
+[32m13:17:49.758[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[10/100] gsm8k: Eliza's rate per hour for the first 40 hours she works each week is $1[0m
+[32m13:18:17.062[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[11/100] gsm8k: A new program had 60 downloads in the first month. The number of downl[0m
+[32m13:18:46.352[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[12/100] gsm8k: Toula went to the bakery and bought various types of pastries. She bou[0m
+[32m13:19:18.525[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[13/100] gsm8k: Carlos is planting a lemon tree. The tree will cost $90 to plant. Each[0m
+[32m13:21:08.494[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[14/100] gsm8k: Melanie is a door-to-door saleswoman. She sold a third of her vacuum c[0m
+[32m13:21:54.052[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[15/100] gsm8k: In a dance class of 20 students, 20% enrolled in contemporary dance, 2[0m
+[32m13:22:26.086[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[16/100] gsm8k: A merchant wants to make a choice of purchase between 2 purchase plans[0m
+[32m13:24:16.672[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[17/100] gsm8k: Two trains leave San Rafael at the same time. They begin traveling wes[0m
+[32m13:25:41.954[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[18/100] gsm8k: Jill gets paid $20 per hour to teach and $30 to be a cheerleading coac[0m
+[32m13:26:17.529[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[19/100] gsm8k: Claire makes a 3 egg omelet every morning for breakfast.  How many doz[0m
+[32m13:26:42.465[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[20/100] gsm8k: Marissa is hiking a 12-mile trail. She took 1 hour to walk the first 4[0m
+[32m13:28:33.284[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[21/100] gsm8k: I have 10 liters of orange drink that are two-thirds water and I wish [0m
+[32m13:31:55.125[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[22/100] gsm8k: Raymond and Samantha are cousins. Raymond was born 6 years before Sama[0m
+[32m13:33:06.062[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[23/100] gsm8k: Billy sells DVDs. He has 8 customers on Tuesday. His first 3 customers[0m
+[32m13:33:26.293[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[24/100] gsm8k: A candle melts by 2 centimeters every hour that it burns. How many cen[0m
+[32m13:33:47.178[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[25/100] gsm8k: Kyle bought last year's best-selling book for $19.50. This is with a 2[0m
+[32m13:34:06.746[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[26/100] gsm8k: Marie ordered one chicken meal that costs $12, 5 packs of milk that co[0m
+[32m13:34:35.775[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[27/100] gsm8k: Mishka bought 3 pairs of shorts, 3 pairs of pants, and 3 pairs of shoe[0m
+[32m13:35:03.814[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[28/100] gsm8k: Cynthia eats one serving of ice cream every night.  She buys cartons o[0m
+[32m13:35:32.296[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[29/100] gsm8k: Henry made two stops during his 60-mile bike trip. He first stopped af[0m
+[32m13:35:53.773[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[30/100] gsm8k: Gloria is shoe shopping when she comes across a pair of boots that fit[0m
+[32m13:36:12.250[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[31/100] gsm8k: Darrell and Allen's ages are in the ratio of 7:11. If their total age [0m
+[32m13:36:40.779[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[32/100] gsm8k: Gunter is trying to count the jelly beans in a jar. He asks his friend[0m
+[32m13:37:06.855[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[33/100] gsm8k: John takes care of 10 dogs.  Each dog takes .5 hours a day to walk and[0m
+[32m13:37:25.846[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[34/100] gsm8k: Gretchen has 110 coins. There are 30 more gold coins than silver coins[0m
+[32m13:37:48.810[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[35/100] gsm8k: Siobhan has 2 fewer jewels than Aaron. Aaron has 5 more jewels than ha[0m
+[32m13:38:08.049[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[36/100] gsm8k: Mike plays ping pong for 40 minutes.  In the first 20 minutes, he scor[0m
+[32m13:38:32.150[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[37/100] gsm8k: Terry eats 2 yogurts a day.  They are currently on sale at 4 yogurts f[0m
+[32m13:38:57.117[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[38/100] gsm8k: John plans to sell all his toys and use the money to buy video games. [0m
+[32m13:40:57.678[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[39/100] gsm8k: John runs 60 miles a week. He runs 3 days a week.  He runs 3 hours the[0m
+[32m13:41:38.954[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[40/100] gsm8k: Dana can run at a rate of speed four times faster than she can walk, b[0m
+[32m13:44:10.976[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[41/100] gsm8k: Brandon's iPhone is four times as old as Ben's iPhone. Ben's iPhone is[0m
+[32m13:44:30.671[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[42/100] gsm8k: The great dragon, Perg, sat high atop mount Farbo, breathing fire upon[0m
+[32m13:44:57.281[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[43/100] gsm8k: Grandma Jones baked 5 apple pies for the fireman's luncheon.  She cut [0m
+[32m13:45:10.973[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[44/100] gsm8k: According to its nutritional info, a bag of chips has 250 calories per[0m
+[32m13:47:18.876[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[45/100] gsm8k: Charlie wants to sell beeswax candles.  For every pound of beeswax, he[0m
+[32m13:49:29.687[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[46/100] gsm8k: Meredith is a freelance blogger who writes about health topics and sub[0m
+[32m13:49:59.977[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[47/100] gsm8k: Candice put 80 post-it notes in her purse before she headed out to her[0m
+[32m13:51:35.102[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[48/100] gsm8k: John buys twice as many red ties as blue ties.  The red ties cost 50% [0m
+[32m13:52:11.756[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[49/100] gsm8k: Tracy used a piece of wire 4 feet long to support tomato plants in the[0m
+[32m13:52:28.662[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[50/100] gsm8k: Richard lives in an apartment building with 15 floors. Each floor cont[0m
+[32m13:52:53.586[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[51/100] gsm8k: Lloyd has an egg farm. His chickens produce 252 eggs per day and he se[0m
+[32m13:53:17.303[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[52/100] gsm8k: Tom's ship can travel at 10 miles per hour.  He is sailing from 1 to 4[0m
+[32m13:56:24.610[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[53/100] gsm8k: Uriah's book bag is getting too heavy for him. He needs to remove 15 p[0m
+[32m13:57:43.756[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[54/100] gsm8k: A mechanic charges different rates to repair the tires of trucks and c[0m
+[32m13:58:17.876[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[55/100] gsm8k: The Doubtfire sisters are driving home with 7 kittens adopted from the[0m
+[32m13:58:38.363[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[56/100] gsm8k: Jean has 30 lollipops. Jean eats 2 of the lollipops. With the remainin[0m
+[32m13:59:13.922[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[57/100] gsm8k: Peter plans to go to the movies this week. He always gets a ticket for[0m
+[32m13:59:29.209[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[58/100] gsm8k: A wooden bridge can carry no more than 5000 pounds. A delivery truck f[0m
+[32m13:59:58.225[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[59/100] gsm8k: Stephen placed an online order for groceries.  His final bill came to [0m
+[32m14:01:45.335[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[60/100] gsm8k: A raspberry bush has 6 clusters of 20 fruit each and 67 individual fru[0m
+[32m14:02:03.647[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[61/100] gsm8k: A basket contains 25 oranges among which 1 is bad, 20% are unripe, 2 a[0m
+[32m14:03:40.046[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[62/100] gsm8k: Janet buys a brooch for her daughter.  She pays $500 for the material [0m
+[32m14:04:02.874[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[63/100] gsm8k: If Marcy works for the same company for 40 years, she gets an annual p[0m
+[32m14:06:28.686[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[64/100] gsm8k: Aleena subscribed to a streaming service that charges her $140 per mon[0m
+[32m14:07:04.918[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[65/100] gsm8k: Sophia is thinking of taking a road trip in her car, and would like to[0m
+[32m14:07:31.977[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[66/100] gsm8k: Jim spends 2 hours watching TV and then decides to go to bed and reads[0m
+[32m14:07:53.296[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[67/100] gsm8k: There are four schools competing at a basketball tournament. Each scho[0m
+[32m14:08:18.922[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[68/100] gsm8k: A treasure hunter found a buried treasure chest filled with gems. Ther[0m
+[32m14:09:50.355[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[69/100] gsm8k: There are twice as many boys as girls at Dr. Wertz's school. If there [0m
+[32m14:10:10.100[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[70/100] gsm8k: Bailey starts with a certain amount of money. Then she receives a week[0m
+[32m14:10:32.403[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[71/100] gsm8k: Judy teaches 5 dance classes, every day, on the weekdays and 8 classes[0m
+[32m14:11:03.812[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[72/100] gsm8k: Kelian has two recipes for preparing dishes, one having 20 instruction[0m
+[32m14:11:20.318[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[73/100] gsm8k: Tommy is fundraising for his charity by selling brownies for $3 a slic[0m
+[32m14:11:45.168[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[74/100] gsm8k: Shiela bought five cell phones for $150 each for a 3-month installment[0m
+[32m14:12:59.317[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[75/100] gsm8k: Artie has a flower stand at the Farmers Market. He sells three kinds o[0m
+[32m14:13:28.580[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[76/100] gsm8k: Luke is spending time at the beach building sandcastles. He eventually[0m
+[32m14:14:52.071[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[77/100] gsm8k: Cecilia just bought a new puppy. According to her veterinarian, she ha[0m
+[32m14:15:37.134[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[78/100] gsm8k: If Raymond does half as much laundry as Sarah, and Sarah does 4 times [0m
+[32m14:16:00.752[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[79/100] gsm8k: Vincent can buy flowers in packages of 3 for $2.50 or in packages of 2[0m
+[32m14:18:21.787[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[80/100] gsm8k: John adopts a dog.  He takes the dog to the groomer, which costs $100.[0m
+[32m14:18:37.489[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[81/100] gsm8k: Two girls each got 1/6 of the 24 liters of water. Then a boy got 6 lit[0m
+[32m14:18:59.481[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[82/100] gsm8k: Charlie had 10 stickers. He bought 21 stickers from a store in the mal[0m
+[32m14:19:13.741[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[83/100] gsm8k: Grace weighs 125 pounds. Alex weighs 2 pounds less than 4 times what G[0m
+[32m14:19:32.066[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[84/100] gsm8k: Dan plants 3 rose bushes. Each rose bush has 25 roses. Each rose has 8[0m
+[32m14:19:47.731[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[85/100] gsm8k: A football team played 22 games. They won 8 more than they lost. How m[0m
+[32m14:20:08.906[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[86/100] gsm8k: Gene is sewing a quilt out of old souvenir t-shirts. He has one shirt [0m
+[32m14:21:09.334[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[87/100] gsm8k: Greg has an alarm set to ring three times a day as a reminder. When th[0m
+[32m14:21:47.949[0m | [33m[1mWARNING [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m230[0m - [33m[1mgsm_86 / full_framework degraded (trace d533082a1468): ['layer2.freshness: search results did not answer the question'][0m
+[32m14:21:48.048[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[88/100] gsm8k: A company pays each of its employees $600 in a month. The company has [0m
+[32m14:24:09.878[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[89/100] gsm8k: Marilyn's first record sold 10 times as many copies as Harald's. If th[0m
+[32m14:24:27.965[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[90/100] gsm8k: Christina is planning a birthday party and needs .75 gift bags per inv[0m
+[32m14:24:46.228[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[91/100] gsm8k: Ted the T-Rex was planning to bring potato salad to the dinosaur picni[0m
+[32m14:25:14.193[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[92/100] gsm8k: Jan has three times the number of pets as Marcia. Marcia has two more [0m
+[32m14:25:32.510[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[93/100] gsm8k: Emily has 4 kids named Amy, Jackson, Corey, and James. Amy is 5 years [0m
+[32m14:25:51.199[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[94/100] gsm8k: Lee used to be able to run the 400-meter hurdles two seconds faster th[0m
+[32m14:27:21.979[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[95/100] gsm8k: In a neighborhood, the number of rabbits pets is twelve less than the [0m
+[32m14:27:49.863[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[96/100] gsm8k: Out of the 200 Grade 5 students, 2/5 are boys and 2/3 of the girls are[0m
+[32m14:28:16.774[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[97/100] gsm8k: Harry slept 9 hours last night. His friend James slept only 2/3 of wha[0m
+[32m14:28:33.383[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[98/100] gsm8k: When Freda cooks canned tomatoes into sauce, they lose half their volu[0m
+[32m14:29:39.959[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[99/100] gsm8k: Cars have lined up on the motorway. Some of the cars drive through in [0m
+[32m14:31:28.312[0m | [1mINFO    [0m | [36m__main__[0m:[36mbenchmark_dataset[0m:[36m206[0m - [1m[100/100] gsm8k: Mary is an avid gardener. Yesterday, she received 18 new potted plants[0m
+
+================================================================================
+  GSM8K summary
+================================================================================
+dataset                                     gsm8k           gsm8k
+config                                   baseline  full_framework
+n                                             100             100
+is_correct_pct                               84.0            88.0
+is_correct_ci95                      [77.0, 91.0]    [81.0, 94.0]
+is_correct_legacy_pct                        88.0            92.0
+is_correct_legacy_ci95               [81.0, 94.0]    [87.0, 97.0]
+avg_latency_s                                5.57           51.83
+avg_tokens                                  375.4          4693.0
+is_correct_delta_vs_baseline                  NaN             4.0
+is_correct_mcnemar_p                          NaN          0.2188
+is_correct_legacy_delta_vs_baseline           NaN             4.0
+is_correct_legacy_mcnemar_p                   NaN           0.125
+
+Routing breakdown (full_framework):
+    triage_decision  n  framework_acc  baseline_acc  changed  mean_entropy
+knowledge_uncertain  1          1.000         1.000    1.000         0.000
+reasoning_uncertain 32          0.688         0.562    0.312         0.532
+               safe 67          0.970         0.970    0.000         0.000
+\begin{table}
+\caption{Benchmark Results on gsm8k (N=100)}
+\label{tab:gsm8k_benchmark}
+\begin{tabular}{lcccc}
+\toprule
+Configuration & Accuracy (%) & 95% CI & Avg Latency (s) & Avg Tokens \\
+\midrule
+Raw LLM (qwen2.5:3b) & 84.000000 & [77.0, 91.0] & 5.570000 & 375.400000 \\
+Defense-in-Depth (Proposed) & 88.000000 & [81.0, 94.0] & 51.830000 & 4693.000000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+[32m14:33:12.521[0m | [1mINFO    [0m | [36m__main__[0m:[36mrun[0m:[36m464[0m - [1m✅ Benchmark complete → evaluation\results_v6_qwen3b[0m

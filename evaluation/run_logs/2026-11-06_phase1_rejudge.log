@@ -1,0 +1,20 @@
+  judged 25/200
+  judged 50/200
+  judged 75/200
+  judged 100/200
+  judged 125/200
+  judged 150/200
+  judged 175/200
+  judged 200/200
+{
+ "qwen2.5:7b (Phase 1 judge)": {
+  "baseline": 61.0,
+  "full_framework": 79.0
+ },
+ "llama3.1:8b": {
+  "baseline": 65.0,
+  "full_framework": 83.0
+ },
+ "agreement_pct": 82.0,
+ "cohen_kappa": 0.554
+}
