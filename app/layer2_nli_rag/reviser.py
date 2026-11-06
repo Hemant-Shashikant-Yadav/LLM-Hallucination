@@ -19,6 +19,7 @@ seeing the rewrite, so it cannot copy its errors), and produces the final answer
 from __future__ import annotations
 
 import asyncio
+import datetime
 import json
 import re
 
@@ -131,26 +132,25 @@ OTHER EVIDENCE ABOUT THE QUESTION (use it to state the correct fact):
 
 Write the edited answer."""
 
-_FRESH_SYSTEM = """You answer questions about current or recent facts using web search results.
+# The draft is deliberately not shown: a 3B model shown "the PM is Rishi Sunak" repeated
+# it over five results saying otherwise. The draft is only the NOT_FOUND fallback.
+_FRESH_SYSTEM = """You answer questions about current facts using ONLY the web search results given.
+Today's date is {today}. Your own memory has a training cut-off and is out of date.
 
 Rules:
-1. Base the answer on the search results. When they disagree, prefer the most recent
-   or most authoritative source.
-2. The draft answer comes from a model with a training cut-off and may be out of date;
-   when the search results contradict it, trust the search results.
-3. If the search results do not answer the question, give the draft's answer and say
-   it may be out of date.
-4. Start with the direct answer, in 1-3 sentences. No preamble."""
+1. Answer from the search results, never from memory. When results disagree, the most
+   recent dated statement wins (e.g. "since July 2026" beats "from 2024 to 2026").
+2. If the results do not answer the question, reply exactly: NOT_FOUND
+3. Start with the direct answer, in 1-3 sentences. No preamble."""
 
 _FRESH_PROMPT = """QUESTION: {question}
-
-DRAFT ANSWER (from model memory, may be outdated):
-{draft}
 
 SEARCH RESULTS:
 {evidence}
 
-Write the up-to-date answer."""
+Answer the question from these results."""
+
+_STALE_NOTE = "(Note: this could not be checked against current sources and may be out of date.)"
 
 _VERDICT_TEXT = {
     NLILabel.ENTAILMENT: "SUPPORTED",
@@ -227,22 +227,26 @@ class EvidenceReviser:
             record_degradation(
                 "layer2.freshness", "no search results for a time-sensitive question"
             )
-            return f"{draft.strip()}\n\n(Note: this could not be checked against current sources and may be out of date.)"
+            return f"{draft.strip()}\n\n{_STALE_NOTE}"
         evidence = "\n".join(
             f"- {e.title}: {e.snippet[:400]}" for e in question_evidence[:5]
         )
         try:
             result = await self._client.generate(
-                prompt=_FRESH_PROMPT.format(question=question, draft=draft[:1500], evidence=evidence),
-                system=_FRESH_SYSTEM,
+                prompt=_FRESH_PROMPT.format(question=question, evidence=evidence),
+                system=_FRESH_SYSTEM.format(today=datetime.date.today().isoformat()),
                 temperature=0.0,
                 max_tokens=300,
             )
         except Exception as exc:
             record_degradation("layer2.freshness", f"evidence answer failed, returning draft: {exc}")
             return draft
+        answer = _strip_preamble(result.text)
+        if not answer or "NOT_FOUND" in answer:
+            record_degradation("layer2.freshness", "search results did not answer the question")
+            return f"{draft.strip()}\n\n{_STALE_NOTE}"
         logger.info("Layer 2 freshness: answered from {} search results", len(question_evidence[:5]))
-        return _strip_preamble(result.text) or draft
+        return answer
 
     async def _evidence_gated_edit(
         self,

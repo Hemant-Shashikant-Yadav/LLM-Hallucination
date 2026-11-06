@@ -43,6 +43,11 @@ from app.models.schemas import ErrorClassification, TriageDecision, TriageResult
 from app.telemetry import record_degradation
 
 
+def math_sample_tokens(prompt: str) -> int:
+    """Token budget for one maths sample: a cut-off solution is dropped and cannot vote."""
+    return settings.se_max_tokens_advanced if is_advanced_math(prompt) else settings.se_max_tokens_math
+
+
 @dataclass
 class SemanticEntropyEstimate:
     """Raw output of the semantic entropy estimator."""
@@ -102,13 +107,14 @@ class SemanticEntropyTriage:
             task_type == "math" if task_type is not None else is_numeric_reasoning_query(prompt)
         )
         advanced = is_numeric and is_advanced_math(prompt)
+        options = parse_options(prompt)
+        # Worked answers (maths, or reasoning through each option) need room to finish
         samples = await self._sample(
-            prompt, model, max_tokens=settings.se_max_tokens_advanced if advanced else None,
-            drop_truncated=is_numeric or bool(parse_options(prompt)),
+            prompt, model, max_tokens=math_sample_tokens(prompt) if is_numeric or options else None,
+            drop_truncated=is_numeric or bool(options),
         )
         responses = [draft_response, *samples]
 
-        options = parse_options(prompt)
         if options:
             # Multiple choice: the meaning of an answer is the option it picks
             cluster_ids, numeric_answers = self._cluster_keys(

@@ -2,7 +2,7 @@
 M.Tech Thesis Benchmark Runner — Paired Multi-Configuration Evaluation.
 
 Configurations:
-  baseline           Raw generator (llama2:7b). Taken from the SAME greedy draft the
+  baseline           Raw generator (DID_OLLAMA_MODEL). Taken from the SAME greedy draft the
                      framework produces, so baseline and framework are exactly paired.
   full_framework     POST /api/v1/query          (Layer 1 triage → Layer 2 / Layer 3)
   naive_rag          POST /api/v1/query/layer2   (always run Layer 2)          [optional]
@@ -34,6 +34,7 @@ import pandas as pd
 from loguru import logger
 
 from app.answer_utils import extract_final_number, normalize_number
+from app.config import settings
 
 logger.remove()
 logger.add(
@@ -52,7 +53,9 @@ logger.add(
 
 API_BASE = "http://localhost:8000"
 REQUEST_TIMEOUT = 1800.0
-GENERATOR_MODEL = "llama2:7b"
+# The pipeline model from .env (DID_OLLAMA_MODEL): one model in every layer. The Phase 1
+# llama2:7b default silently ran a qwen benchmark on llama2, partly on CPU.
+GENERATOR_MODEL = settings.ollama_model
 VERIFIER_MODEL = "llama3.1:8b"
 DEFAULT_OUT_DIR = Path(__file__).resolve().parent / "results_v4"
 
@@ -64,7 +67,7 @@ CONFIG_ENDPOINTS = {
 }
 CONFIG_ORDER = ["baseline", "naive_rag", "full_framework", "reference_verifier"]
 DISPLAY_NAMES = {
-    "baseline": "Raw LLM (llama2:7b)",
+    "baseline": f"Raw LLM ({GENERATOR_MODEL})",
     "naive_rag": "Naive RAG (always Layer 2)",
     "full_framework": "Defense-in-Depth (Proposed)",
     "reference_verifier": "Raw verifier (llama3.1:8b)",

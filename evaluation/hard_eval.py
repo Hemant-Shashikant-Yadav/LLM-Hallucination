@@ -37,7 +37,7 @@ def _path(tag: str) -> Path:
     return OUT_DIR / f"{_SET}_{tag}.jsonl"
 
 
-async def collect(api_base: str, tag: str) -> None:
+async def collect(api_base: str, tag: str, only: list[str] | None = None) -> None:
     OUT_DIR.mkdir(exist_ok=True)
     path = _path(tag)
     done = set()
@@ -45,6 +45,8 @@ async def collect(api_base: str, tag: str) -> None:
         done = {json.loads(l)["id"] for l in path.read_text(encoding="utf-8").splitlines() if l.strip()}
     async with httpx.AsyncClient(timeout=1200) as client:
         for category, items in _sets().items():
+            if only and category not in only:
+                continue
             for item_id, question, kind, key in items:
                 if item_id in done:
                     continue
@@ -175,11 +177,12 @@ def main() -> None:
     ap.add_argument("--tags", nargs="+", default=["before", "after"])
     ap.add_argument("--api-base", default="http://127.0.0.1:8000")
     ap.add_argument("--set", default="hard", choices=["hard", "ladder"])
+    ap.add_argument("--only", nargs="+", help="collect only these categories, e.g. 'MATH L5'")
     args = ap.parse_args()
     global _SET
     _SET = args.set
     if args.mode == "collect":
-        asyncio.run(collect(args.api_base, args.tag))
+        asyncio.run(collect(args.api_base, args.tag, args.only))
     elif args.mode == "score":
         score(args.tag)
     else:

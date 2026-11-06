@@ -122,7 +122,13 @@ def extract_final_number(text: str) -> str | None:
             return _match_value(first, tail)
         if re.match(r"\s*[a-zA-Z\\(]", tail) and re.search(r"[a-z]\s*[\^=+*/]|\d\s*[a-z]\b", tail[:30]):
             return None  # symbolic final answer such as '2x' or 'x = 2y + 1'
+    # No marker: the concluding sentence states the answer ("Jim spends 36 hours on TV
+    # in 4 weeks" → 36, where the last number, 4, is a span the question gave)
     numbers = _values(text)
+    concluded = _concluding_number(text.strip()[-300:])
+    concluded = normalize_number(concluded) if concluded is not None else None
+    if concluded is not None and concluded in numbers:  # not the '2' of '2 1/2 cups'
+        return concluded
     return numbers[-1] if numbers else None
 
 
@@ -170,11 +176,21 @@ def extract_final_answer(text: str) -> str | None:
 # "(a) 120", "(B) 60", or an "a) …" / "A. …" option at the start of a line
 _OPTION = re.compile(r"(?:(?<=\s)|^)\(([a-eA-E])\)\s*|(?m:^)[ \t]*([a-eA-E])[.)][ \t]+")
 _CHOICE_MARK = re.compile(
-    r"(?:answer|option|choice)\s*(?:is|:|=)?\s*(?:option\s*)?"
+    r"(?:answer|option|choice)(?:\s|is|:|=|\*)*(?:option\s*)?"
     r"(?:\(([a-eA-E])\)|([A-E])(?![A-Za-z])|([a-e])\))",
     re.IGNORECASE,
 )
-_BOXED_LETTER = re.compile(r"\\boxed\{\s*(?:\\text\{)?\(?([a-eA-E])\)?\}?\s*\}")
+# "The largest source is (d) aquifers", "the best conclusion is: (a) The fish …"
+_IS_LABEL = re.compile(r"\b(?:is|be|are)\s*:?\s*\**\(([a-eA-E])\)")
+# "(c) A mountaintop to sea level." as its own line near the end
+_LABEL_LINE = re.compile(r"^\s*\**\(?([a-eA-E])[).]\s+\S", re.MULTILINE)
+_ENDORSE = re.compile(
+    r"\b(correct|best|right|answer is|most likely|would be|is the|should be|choose|select)\b",
+    re.IGNORECASE,
+)
+_REJECT = re.compile(
+    r"\b(not|incorrect|wrong|other options?|rather than|instead of|unlike|except)\b", re.IGNORECASE
+)
 
 
 def parse_options(question: str) -> dict[str, str]:
@@ -208,12 +224,30 @@ def strip_options(question: str) -> str:
     return question[:first.start()].strip()
 
 
+_NONE_PICKED = re.compile(
+    r"(?:none(?: of (?:the|these)(?: above| options)?)?|neither|no (?:valid )?(?:answer|option|conclusion))\.?",
+    re.IGNORECASE,
+)
+
+
+def _boxed_choice(inner: str, options: dict[str, str]) -> str | None:
+    """The option a \\boxed{...} answer names: a lone letter, "(c)", or one option's text."""
+    whole = re.fullmatch(r"\(?([a-eA-E])\)?\.?", inner)
+    letters = {whole.group(1)} if whole else set(re.findall(r"\(([a-eA-E])\)", inner))
+    picked = {m.lower() for m in letters} & options.keys()
+    if not picked:
+        low = inner.lower()
+        picked = {k for k, text in options.items()
+                  if len(text) >= 3 and text.lower().rstrip(".") in low}
+    return picked.pop() if len(picked) == 1 else None
+
+
 def extract_choice(answer: str, options: dict[str, str]) -> str | None:
     """
     Which option an answer picked. Small models often compute the right value but
     mis-copy the letter, so a final number that matches exactly one option wins;
-    otherwise an explicit letter ("answer is (b)", "\\boxed{B}"); otherwise the
-    option text quoted near the end.
+    otherwise an explicit letter ("answer is (b)", "\\boxed{B}", "… is (d) aquifers");
+    otherwise a closing label line; otherwise option text in a sentence endorsing it.
     """
     if not answer or not options:
         return None
@@ -222,16 +256,35 @@ def extract_choice(answer: str, options: dict[str, str]) -> str | None:
         hits = [k for k, text in options.items() if values_close(option_value(text), value)]
         if len(hits) == 1:
             return hits[0]
-    marks = _BOXED_LETTER.findall(answer) or [
-        next(g for g in m.groups() if g) for m in _CHOICE_MARK.finditer(answer)
-    ]
-    letters = [m.lower() for m in marks if m.lower() in options]
+    if "\\boxed{" in answer:
+        # A boxed answer is final: \boxed{B}, \boxed{\text{(c) oceans}}. \boxed{\text{None}}
+        # picks no option, even if the text says "option (d) is incorrect" above it.
+        # A boxed formula in other notation than the options falls through to the rest.
+        boxed = re.sub(r"\\text\{([^{}]*)\}", r"\1", final_expression(answer) or "").strip(" *")
+        picked = _boxed_choice(boxed, options)
+        if picked or _NONE_PICKED.fullmatch(boxed):
+            return picked
+    marks = [next(g for g in m.groups() if g) for m in _CHOICE_MARK.finditer(answer)]
+    letters = [m.lower() for m in marks or _IS_LABEL.findall(answer) if m.lower() in options]
     if letters:
         return letters[-1]
-    tail = answer[-300:].lower()
-    found = [(tail.rfind(text.lower()), k) for k, text in options.items()
-             if len(text) >= 3 and text.lower() in tail]
-    return max(found)[1] if found else None
+    # A closing line that is just an option label: "(c) A mountaintop to sea level."
+    labels = [m.lower() for m in _LABEL_LINE.findall(answer[-200:]) if m.lower() in options]
+    if len(set(labels)) == 1:
+        return labels[0]
+    # Option text named in a sentence that endorses it — never one that rejects it
+    # ("The other options—colder, deeper, and larger—are not affected" names the losers)
+    sentences = re.split(r"(?<=[.!?])\s+|\n+", answer)
+    for pool in (
+        [s for s in sentences if _ENDORSE.search(s) and not _REJECT.search(s)],
+        sentences[:1],
+    ):
+        for sentence in pool:
+            low = sentence.lower()
+            named = {k for k, text in options.items() if len(text) >= 3 and text.lower() in low}
+            if len(named) == 1:
+                return named.pop()
+    return None
 
 
 # =============================================================================
@@ -429,6 +482,8 @@ _STATED_AS = re.compile(
     re.IGNORECASE,
 )
 _NOT_RATIO = re.compile(r"(?<![\d:/.,])(-?\d[\d,]*(?:\.\d+)?)(?!\s*[:/]\s*\d)")
+# "… in 4 weeks", "… after 3 years": a span the question gave, not the quantity asked for
+_QUALIFIED = re.compile(r"\b(?:in|for|over|within|after|during|per|each|every)\s*[$₹]?\s*$", re.IGNORECASE)
 
 
 def _concluding_number(tail: str) -> str | None:
@@ -436,18 +491,25 @@ def _concluding_number(tail: str) -> str | None:
     'Therefore, the EMI is approximately ₹946.94, rounded to 2 decimal places.' → 946.94
     'Therefore, we need to add 10 litres … to get the ratio 3:2.' → 10
     'So, it would take 5 people 48 hours to paint the house.' → 48
+    'Therefore, Claire will eat 7 dozens of eggs in 4 weeks.' → 7
     The number stated after 'is / be / = / ≈ / approximately' wins; otherwise the last
-    number that is not part of a ratio.
+    number that is not part of a ratio or a qualifying span ('in 4 weeks').
     """
     clean = tail.replace("\\(", " ").replace("\\)", " ").replace("$", " ")
     sentences = [s for s in re.split(r"(?<=[.!?])\s+|\n+", clean) if s.strip()]
     for sentence in reversed(sentences[-3:]):
         if not _CONCLUSION.match(sentence):
             continue
+        # "Jill's salary is $35,000 + $22,500 = $57,500": the result after the last '='
+        equals = re.findall(r"=\s*(-?\d[\d,]*(?:\.\d+)?)(?![\d.]*\s*[-+*/×])", sentence)
+        if equals:
+            return equals[-1]
         stated = _STATED_AS.findall(sentence)
         if stated:
             return stated[0]
-        numbers = _NOT_RATIO.findall(sentence)
+        found = list(_NOT_RATIO.finditer(sentence))
+        numbers = [m.group(1) for m in found if not _QUALIFIED.search(sentence[:m.start()])]
+        numbers = numbers or [m.group(1) for m in found]
         return numbers[-1] if numbers else None
     return None
 
@@ -798,6 +860,7 @@ def _linear_equation(q: str) -> Calculation | None:
 # Task routing (rule-based layer; the LLM router handles ambiguous queries)
 # =============================================================================
 
+_MULTIPLES = re.compile(r"\b(?:half|twice|thrice|double|triple|dozens?)\b", re.IGNORECASE)
 _REASONING_CUES = re.compile(
     r"\b(how many|how much|how long|how far|how old|what is the total|total|calculate|"
     r"what percentage|what fraction|in all|altogether|left over|remain(?:ing|s)?|"
@@ -856,11 +919,18 @@ def classify_task_heuristic(prompt: str) -> tuple[str, bool]:
     if calculate(prompt) is not None:
         return "math", True
     quantities = re.findall(r"\d[\d,]*(?:\.\d+)?", prompt)
+    # Spelled-out quantities count too: "the first time it went off today, it rang four
+    # times … three times as long … half as long" (GSM8K test item 86)
+    spelled = [m.group(0) for m in _NUM_WORD.finditer(prompt) if m.group(0).lower() != "one"]
+    spelled += _MULTIPLES.findall(prompt)
     # Word problems first: "Today is December 31st … how many calories" is a story,
     # not a question about current events (GSM8K dev item 510 was misrouted)
-    if len(quantities) >= 2 and _REASONING_CUES.search(prompt):
+    if len(quantities) + len(spelled) >= 2 and _REASONING_CUES.search(prompt):
         return "math", True
-    if _TIME_SENSITIVE.search(prompt):
+    # Only the question's own words: "today" inside a quoted premise or an option
+    # ("(c) 'My birthday is today'") does not make a logic question about current events
+    stem = re.sub(r'"[^"\n]*"|“[^”\n]*”', " ", strip_options(prompt))
+    if _TIME_SENSITIVE.search(stem):
         return "time_sensitive", True
     if _MATH_WORDS.search(prompt) and (quantities or re.search(r"\b[xyz]\b", prompt)):
         return "math", True

@@ -263,12 +263,39 @@ class FrameworkSettings(BaseSettings):
     )
     l3_sample_step: int = Field(default=3, ge=1, le=10)
     l3_stop_agreement: float = Field(default=0.7, ge=0.5, le=1.0)
+    se_max_tokens_math: int = Field(
+        default=1024,
+        ge=128,
+        description=(
+            "Max tokens per sample for other maths questions. At 512, MATH level 3-5 "
+            "solutions were cut off and dropped, leaving 1-2 voters on the hardest items."
+        ),
+    )
     se_max_tokens_advanced: int = Field(
         default=1536,
         ge=128,
         description=(
             "Max tokens per sample for advanced maths. qwen writes verbose LaTeX: vector and "
             "calculus solutions were cut off at 1024, and a cut-off sample cannot vote."
+        ),
+    )
+    question_search_retries: int = Field(
+        default=2,
+        ge=0,
+        le=5,
+        description=(
+            "Extra attempts for the question-level web search when it returns nothing. "
+            "DuckDuckGo intermittently answers 'No results found'; time-sensitive "
+            "questions then fell back to the model's stale memory. Claim searches are not "
+            "retried: long claim sentences often have no results for real."
+        ),
+    )
+    mcq_vote: bool = Field(
+        default=True,
+        description=(
+            "Uncertain multiple-choice questions that are not maths (science, logic, "
+            "fallacies) are settled by a self-consistency vote over the options instead of "
+            "Layer 2's web-evidence edit, which on the ARC/logic ladder fixed none and broke one."
         ),
     )
     verify_advanced_math: bool = Field(

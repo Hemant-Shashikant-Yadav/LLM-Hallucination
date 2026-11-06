@@ -73,8 +73,18 @@ class TaskRouter:
             # rules already caught genuine present-tense cues ("current", "latest")
             logger.info("Task route: model said time_sensitive, but the query names a past year")
             return "factual"
+        if llm_label == "time_sensitive" and self._gives_quantities(query):
+            # "If Mars has a 697-day year and a 12-day week, which year …" is computed from
+            # the numbers it gives, not looked up (MATH ladder item numb190 was misrouted)
+            logger.info("Task route: model said time_sensitive, but the query gives the data")
+            return "math"
         logger.info("Task route: {} (model; rules guessed {})", llm_label, label)
         return llm_label
+
+    @staticmethod
+    def _gives_quantities(query: str) -> bool:
+        numbers = re.findall(r"\b\d[\d,]*(?:\.\d+)?\b", query)
+        return len([n for n in numbers if not _PAST_YEAR.fullmatch(n)]) >= 2
 
     @staticmethod
     def _names_past_year(query: str) -> bool:

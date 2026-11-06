@@ -25,7 +25,6 @@ from app.answer_utils import (
     canonicalize,
     extract_choice,
     extract_final_answer,
-    is_advanced_math,
     is_numeric_reasoning_query,
     numbers_match,
     parse_options,
@@ -34,7 +33,7 @@ from app.config import settings
 from app.layer1_triage.activation_hook import ActivationExtractor
 from app.layer1_triage.probe_model import SurrogateExtractor, TriageEngine
 from app.layer1_triage.task_router import TaskRouter
-from app.layer1_triage.semantic_entropy import SemanticEntropyTriage
+from app.layer1_triage.semantic_entropy import SemanticEntropyTriage, math_sample_tokens
 from app.layer2_nli_rag.nli_verifier import NLIVerifier
 from app.layer2_nli_rag.proposition_parser import PropositionParser
 from app.layer2_nli_rag.reviser import EvidenceReviser
@@ -53,6 +52,7 @@ from app.telemetry import (
 )
 from app.models.schemas import (
     ExecutionGraph,
+    JudgmentResult,
     Layer3Result,
     PlanNode,
     PipelineLayer,
@@ -333,6 +333,14 @@ class DefenseInDepthRouter:
                 pipeline_result=pipeline_result if request.include_audit else None,
             )
 
+        elif (settings.mcq_vote and task_type == "factual" and se_estimate is not None
+              and parse_options(request.prompt)):
+            # Multiple choice that is not maths: the samples disagree on the option, and
+            # web evidence has no claim to check in "which premise is valid?"
+            return await self._process_choice_vote(
+                request, draft_response, draft_result, triage_result, start, se_estimate
+            )
+
         elif triage_result.decision == TriageDecision.KNOWLEDGE_UNCERTAIN:
             # Route to Layer 2: NLI-RAG Verification
             return await self._process_layer2(
@@ -436,7 +444,9 @@ class DefenseInDepthRouter:
                 self._proposition_parser.extract_propositions(
                     draft_response, max_propositions=6
                 ),
-                self._search_retriever.search(request.prompt),
+                self._search_retriever.search(
+                    request.prompt, retries=settings.question_search_retries
+                ),
             )
             out.update(propositions=len(propositions), question_evidence=len(question_evidence))
 
@@ -618,9 +628,7 @@ class DefenseInDepthRouter:
         """
         options = parse_options(request.prompt)
         key = (lambda t: extract_choice(t, options)) if options else extract_final_answer
-        max_tokens = (
-            settings.se_max_tokens_advanced if is_advanced_math(request.prompt) else None
-        )
+        max_tokens = math_sample_tokens(request.prompt)
         ceiling = max(settings.l3_max_extra_samples, settings.l3_extra_samples)
         drawn, share = 0, 0.0
         while drawn < ceiling:
@@ -639,6 +647,50 @@ class DefenseInDepthRouter:
                 logger.info("Only {}/{} samples usable; stopping adaptive sampling", len(extra), n)
                 break
         return candidates, drawn, share
+
+    async def _process_choice_vote(
+        self, request, draft_response, draft_result, triage_result, start, se_estimate,
+    ) -> QueryResponse:
+        """
+        Layer 3 for multiple choice that is not maths: self-consistency over the
+        options (Layer 1's samples plus adaptive extras). Nothing to compute, so no
+        programs; the option most answers pick wins, and a tie keeps the draft's.
+        """
+        layer3_start = time.perf_counter()
+        options = parse_options(request.prompt)
+        async with stage("layer3.extra_samples", min=settings.l3_extra_samples) as out:
+            candidates, drawn, share = await self._adaptive_samples(request, se_estimate.responses)
+            out.update(drawn=drawn, top_share=round(share, 2))
+        choices = [extract_choice(c, options) for c in candidates]  # [0] is the draft
+        counts = Counter(c for c in choices if c is not None)
+        winner = choices[0]
+        if counts:
+            top = counts.most_common(1)[0][1]
+            leaders = [k for k, v in counts.items() if v == top]
+            if winner not in leaders and len(leaders) == 1:
+                winner = leaders[0]
+        refined = draft_response if winner == choices[0] else candidates[choices.index(winner)]
+        votes = ", ".join(f"({k}) {v}" for k, v in counts.most_common()) or "no option read"
+        graph = ExecutionGraph(
+            query=request.prompt,
+            steps=[PlanNode(step_id=1, description="Vote over the options across samples",
+                            dependencies=[], status="completed", output=votes)],
+            total_steps=1,
+        )
+        changed = winner != choices[0]
+        judgment = JudgmentResult(
+            is_consistent=not changed,
+            violations=[f"draft picked ({choices[0]}); samples prefer ({winner})"] if changed else [],
+            confidence=counts[winner] / len(candidates) if winner in counts else 0.0,
+        )
+        layer3_result = Layer3Result(
+            execution_graph=graph, reasoning_traces=[f"option votes over {len(candidates)}: {votes}"],
+            judgment=judgment, refined_response=refined, latency_ms=0.0,
+        )
+        return self._finish_layer3(
+            request, draft_response, draft_result, triage_result, start,
+            layer3_start, graph, layer3_result,
+        )
 
     def _finish_layer3(
         self, request, draft_response, draft_result, triage_result, start,

@@ -1,0 +1,3 @@
+dataset,config,n,is_correct_pct,is_correct_ci95,is_correct_legacy_pct,is_correct_legacy_ci95,avg_latency_s,avg_tokens,is_correct_delta_vs_baseline,is_correct_mcnemar_p,is_correct_legacy_delta_vs_baseline,is_correct_legacy_mcnemar_p
+gsm8k,baseline,100,84.0,"[77.0, 91.0]",88.0,"[81.0, 94.0]",5.57,375.4,,,,
+gsm8k,full_framework,100,88.0,"[81.0, 94.0]",92.0,"[87.0, 97.0]",51.83,4693.0,4.0,0.2188,4.0,0.125

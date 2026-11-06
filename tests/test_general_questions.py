@@ -69,6 +69,20 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(classify_task_heuristic("Who is the current Prime Minister of the UK?"),
                          ("time_sensitive", True))
 
+    def test_spelled_out_word_problem_is_math(self):
+        q = ("Greg has an alarm set to ring three times a day. The first time it went off today, "
+             "it rang four times. The second time it rang for three times as long as the first "
+             "time. The third time, it rang for half as long as the second time. How many times "
+             "did the alarm ring in all?")
+        self.assertEqual(classify_task_heuristic(q), ("math", True))
+
+    def test_today_in_a_quoted_premise_is_not_current_events(self):
+        q = ('Given the major premise "Either I do well on this test or I am mad", which minor '
+             'premise leads to a valid conclusion?\n(a) "I won\'t do well"\n(b) "My birthday is today"')
+        self.assertNotEqual(classify_task_heuristic(q)[0], "time_sensitive")
+        self.assertEqual(classify_task_heuristic('What is the latest "Star Wars" film?')[0],
+                         "time_sensitive")
+
     def test_gsm8k_style_word_problem_is_math(self):
         q = ("Janet's ducks lay 16 eggs per day. She eats three for breakfast every morning "
              "and bakes muffins with four. She sells the rest for $2 per egg. "
@@ -107,6 +121,12 @@ class ParsingTests(unittest.TestCase):
         ("so he needs 2 1/2 cups", "2.5"), (r"So the total is \boxed{\$1,250}.", "1250"),
         ("The answer is 18. She sells 9 eggs.", "18"), ("costs $3 each. #### 54", "54"),
         ("Speed is 60 km/h for 2.5 hours = 150 km", "150"), ("It is -40 degrees.", "-40"),
+        # Concluding sentences without a marker (GSM8K test items 18, 36, 65 were misread)
+        ("Therefore, Claire will eat 7 dozens of eggs in 4 weeks.", "7"),
+        ("Therefore, Jim spends 36 hours on TV and reading in 4 weeks.", "36"),
+        ("Therefore, Terry spends $75.00 on yogurt over 30 days.", "75"),
+        ("Therefore, Jill's annual salary is $35,000 + $22,500 = $57,500.", "57500"),
+        ("So, it would take 5 people 48 hours to paint the house.", "48"),
     ]
 
     def test_extract_final_number(self):
@@ -146,6 +166,26 @@ class MCQTests(unittest.TestCase):
         for text, want in cases:
             with self.subTest(text=text):
                 self.assertEqual(extract_choice(text, self.OPTS), want)
+
+    def test_extract_choice_text_options(self):
+        lake = {"a": "colder", "b": "deeper", "c": "larger", "d": "smaller"}
+        water = {"a": "lakes", "b": "rivers", "c": "oceans", "d": "aquifers"}
+        cases = [
+            (lake, "Therefore, the correct answer is:\n\n(d) smaller", "d"),
+            (lake, "The lake will become smaller. The other options—colder, deeper, "
+                   "and larger—are not affected.", "d"),  # never the rejected options
+            (lake, "Water use grows.\n\n(d) Smaller.", "d"),
+            (water, "The largest source is (c) oceans. However, oceans are salty. "
+                    "The largest drinkable source is (d) aquifers.", "d"),  # self-correction
+            (water, "The best conclusion is:\n\n(a) lakes\n\nThis is because water "
+                    "collects there over a long time.", "a"),
+            (water, r"So option (d) is incorrect. Therefore: \boxed{\text{None}}", None),
+            (water, r"Groundwater is stored underground. \boxed{\text{(d) aquifers}}", "d"),
+            (water, r"\boxed{\text{Aquifers}}", "d"),
+        ]
+        for opts, text, want in cases:
+            with self.subTest(text=text):
+                self.assertEqual(extract_choice(text, opts), want)
 
     def test_mcq_routes_to_math_and_strips_options(self):
         self.assertEqual(classify_task_heuristic(self.Q), ("math", True))
@@ -246,6 +286,15 @@ class TaskRouterTests(unittest.IsolatedAsyncioTestCase):
         client = _FakeJSONClient('{"type": "time_sensitive"}')
         self.assertEqual(await TaskRouter(client).classify("What happened on July 20, 1969?"), "factual")
 
+    async def test_given_quantities_overrule_time_sensitive(self):
+        client = _FakeJSONClient('{"type": "time_sensitive"}')
+        q = ("The length of the year on the planet Mars is exactly 697 days. If Mars has a calendar "
+             "with a 12-day week, and year 0 begins on the first day of the week, what is the next "
+             "year which will begin on the first day of the week?")
+        self.assertEqual(await TaskRouter(client).classify(q), "math")
+        self.assertEqual(await TaskRouter(client).classify("Who is the president of France?"),
+                         "time_sensitive")
+
     async def test_llm_failure_falls_back_and_is_recorded(self):
         client = _FakeJSONClient(RuntimeError("boom"))
         with request_trace():
@@ -304,3 +353,78 @@ class ExactVerificationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ChoiceVoteTests(unittest.IsolatedAsyncioTestCase):
+    """Non-maths multiple choice: the option most answers pick wins; ties keep the draft."""
+
+    Q = ("Which is Earth's largest source of drinkable water?\n"
+         "(a) lakes\n(b) rivers\n(c) oceans\n(d) aquifers")
+
+    async def _vote(self, draft: str, samples: list[str], extra: list[str]):
+        from app.models.schemas import QueryRequest, TriageResult
+        from app.router import DefenseInDepthRouter
+
+        async def sample(*_args, **_kwargs):
+            return extra
+
+        router = DefenseInDepthRouter.__new__(DefenseInDepthRouter)
+        router._se_triage = SimpleNamespace(sample=sample)
+        triage = TriageResult(
+            decision=TriageDecision.KNOWLEDGE_UNCERTAIN, semantic_entropy=0.9,
+            hallucination_probability=0.5, error_classification=None,
+            threshold_used=settings.t_safe, draft_response=draft, latency_ms=0.0,
+        )
+        estimate = SimpleNamespace(responses=[draft, *samples])
+        draft_result = SimpleNamespace(total_tokens=0, latency_ms=0.0)
+        return await router._process_choice_vote(
+            QueryRequest(prompt=self.Q, include_audit=True), draft, draft_result, triage, 0.0, estimate
+        )
+
+    async def test_majority_overturns_draft(self):
+        res = await self._vote("The answer is (c) oceans.", ["The answer is (d) aquifers."] * 2,
+                               ["The answer is (d) aquifers."] * 4 + ["The answer is (c) oceans."])
+        self.assertIn("(d) aquifers", res.answer)
+        self.assertFalse(res.pipeline_result.layer3_result.judgment.is_consistent)
+
+    async def test_tie_keeps_draft(self):
+        res = await self._vote("The answer is (c) oceans.", ["The answer is (d) aquifers."],
+                               ["The answer is (c) oceans.", "The answer is (d) aquifers."])
+        self.assertEqual(res.answer, "The answer is (c) oceans.")
+
+
+class FreshSearchTests(unittest.IsolatedAsyncioTestCase):
+    async def test_question_search_retries_when_web_returns_nothing(self):
+        from unittest import mock
+
+        from app.layer2_nli_rag.search_retriever import SearchRetriever
+        from app.models.schemas import SearchResult
+
+        hit = SearchResult(title="BBC", url="https://bbc.example/pm", snippet="X is PM.",
+                           relevance_score=0.7)
+        replies = [[], [hit]]  # throttled once, then results
+
+        async def ddg(_query, _limit):
+            return replies.pop(0)
+
+        retriever = SearchRetriever(backend="duckduckgo")
+        with mock.patch.object(retriever, "_search_duckduckgo", ddg), \
+             mock.patch("app.layer2_nli_rag.search_retriever.asyncio.sleep", new=mock.AsyncMock()):
+            found = await retriever.search("Who is the PM?", retries=2)
+        self.assertEqual([r.url for r in found], ["https://bbc.example/pm"])
+
+    async def test_results_that_do_not_answer_keep_draft_with_note(self):
+        from app.layer2_nli_rag.reviser import EvidenceReviser
+        from app.models.schemas import SearchResult
+
+        class _NotFound:
+            async def generate(self, **_kwargs):
+                return SimpleNamespace(text="NOT_FOUND")
+
+        ev = [SearchResult(title="t", url="u", snippet="unrelated", relevance_score=0.7)]
+        with request_trace():
+            out = await EvidenceReviser(_NotFound())._answer_from_evidence("Who is the PM?", "X.", ev)
+            recorded = degradations()
+        self.assertTrue(out.startswith("X."))
+        self.assertIn("may be out of date", out)
+        self.assertTrue(any("freshness" in d for d in recorded))

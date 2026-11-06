@@ -49,6 +49,7 @@ class SearchRetriever:
         self,
         query: str,
         max_results: int | None = None,
+        retries: int = 0,
     ) -> list[SearchResult]:
         """
         Search for evidence related to the given query.
@@ -56,6 +57,7 @@ class SearchRetriever:
         Args:
             query: Search query string.
             max_results: Override max results.
+            retries: Extra web attempts, with back-off, when the web returns nothing.
 
         Returns:
             List of SearchResult objects ranked by relevance.
@@ -66,6 +68,13 @@ class SearchRetriever:
         try:
             if self._backend in ("duckduckgo", "both"):
                 web_results = await self._search_duckduckgo(query, limit)
+                for attempt in range(retries):
+                    if web_results:
+                        break
+                    # DuckDuckGo intermittently answers "No results found" under load; the
+                    # same query seconds later returns results (seen live on "current PM")
+                    await asyncio.sleep(1.5 * (attempt + 1))
+                    web_results = await self._search_duckduckgo(query, limit)
                 results.extend(web_results)
 
             if self._backend in ("tavily", "both"):
