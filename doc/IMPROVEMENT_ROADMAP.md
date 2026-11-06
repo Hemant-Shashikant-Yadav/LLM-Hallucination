@@ -167,8 +167,11 @@ Probed offline on 18 basic questions (`app/answer_utils.py`):
 
 ### P3: Evaluation quality
 14. **Judge noise.** Answers differing by one comma got opposite llama3.1:8b verdicts.
-    Use three judge seeds or two judge models and a majority, and always report ROUGE-L
-    alongside.
+    ✅ Measured (`python -m evaluation.judge_agreement`): re-grading Phase 1's 200 answers
+    with llama3.1:8b gives 65.0% → 83.0% vs 61.0% → 79.0% under qwen2.5:7b, the **same
+    +18.0 gain**. Judges agree on 82% of verdicts (κ = 0.55). The fixed judge for all
+    TruthfulQA numbers is llama3.1:8b. Still open: majority of 3 judge seeds to cut
+    per-item noise; always report ROUGE-L alongside.
 15. **Bigger N.** Run the full GSM8K test (1,319) and TruthfulQA (817). At N = 100,
     differences under ~8 points are not significant.
 16. **Determinism.** One server process during benchmarks. Parallel requests change

@@ -855,11 +855,13 @@ def classify_task_heuristic(prompt: str) -> tuple[str, bool]:
     """
     if calculate(prompt) is not None:
         return "math", True
-    if _TIME_SENSITIVE.search(prompt):
-        return "time_sensitive", True
     quantities = re.findall(r"\d[\d,]*(?:\.\d+)?", prompt)
+    # Word problems first: "Today is December 31st … how many calories" is a story,
+    # not a question about current events (GSM8K dev item 510 was misrouted)
     if len(quantities) >= 2 and _REASONING_CUES.search(prompt):
         return "math", True
+    if _TIME_SENSITIVE.search(prompt):
+        return "time_sensitive", True
     if _MATH_WORDS.search(prompt) and (quantities or re.search(r"\b[xyz]\b", prompt)):
         return "math", True
     if len(quantities) == 1 and _REASONING_CUES.search(prompt):

@@ -62,6 +62,13 @@ class RoutingTests(unittest.TestCase):
                 else:
                     self.assertEqual(expected, "factual", "math must be caught by rules")
 
+    def test_today_in_a_word_problem_is_not_current_events(self):
+        q = ("Andy wants to lose 30 lbs by his birthday, July 19th. Today is December 31st. "
+             "If he must burn 3500 calories to lose a pound, how many calories a day must he burn?")
+        self.assertEqual(classify_task_heuristic(q), ("math", True))
+        self.assertEqual(classify_task_heuristic("Who is the current Prime Minister of the UK?"),
+                         ("time_sensitive", True))
+
     def test_gsm8k_style_word_problem_is_math(self):
         q = ("Janet's ducks lay 16 eggs per day. She eats three for breakfast every morning "
              "and bakes muffins with four. She sells the rest for $2 per egg. "
