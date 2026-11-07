@@ -28,6 +28,8 @@ Detailed backlog and evidence: `doc/IMPROVEMENT_ROADMAP.md`.
 | Difficulty ladder: MATH L1–5, ARC, StrategyQA, logic | 80 | 61 | 66 | 7/2 | 0.18 |
 | GSM8K dev 500–539 (design run) | 40 | 28 | 35 | 7/0 | 0.016 |
 | Smoke test (16 basic questions) | 16 | | 15 pass | | |
+Test sets: frozen copies with pinned dataset versions and checksums in `data/eval_sets/`
+(`MANIFEST.json`; rebuild with `python -m evaluation.export_eval_sets`).
 Phase 1 reference (llama2:7b): TruthfulQA 65% → 83%, the same +18 under two judges.
 Reports: [Results Summary](https://claude.ai/artifact/CpEAGKraVZmCeHi2ge8u8g) ·
 [detailed report](https://claude.ai/artifact/26qLfLwSTTtmWRXzPCbu64).

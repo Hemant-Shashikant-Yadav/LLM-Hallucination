@@ -77,10 +77,16 @@ DISPLAY_NAMES = {
 # ── Dataset Loaders ──────────────────────────────────────────────────────────
 
 
+# Pinned Hugging Face dataset versions: a rerun reads exactly the questions in the paper
+# (frozen copies with checksums: data/eval_sets/, python -m evaluation.export_eval_sets)
+GSM8K_REVISION = "740312add88f781978c0658806c59bc2815b9866"
+TRUTHFULQA_REVISION = "741b8276f2d1982aa3d5b832d3ee81ed3b896490"
+
+
 def load_truthfulqa(n: int, offset: int = 0) -> list[dict[str, Any]]:
     from datasets import load_dataset
 
-    ds = load_dataset("truthfulqa/truthful_qa", "generation", split="validation")
+    ds = load_dataset("truthfulqa/truthful_qa", "generation", split="validation", revision=TRUTHFULQA_REVISION)
     samples = []
     for i in range(offset, min(offset + n, len(ds))):
         row = ds[i]
@@ -99,7 +105,7 @@ def load_truthfulqa(n: int, offset: int = 0) -> list[dict[str, Any]]:
 def load_gsm8k(n: int, offset: int = 0) -> list[dict[str, Any]]:
     from datasets import load_dataset
 
-    ds = load_dataset("openai/gsm8k", "main", split="test")
+    ds = load_dataset("openai/gsm8k", "main", split="test", revision=GSM8K_REVISION)
     samples = []
     for i in range(offset, min(offset + n, len(ds))):
         row = ds[i]

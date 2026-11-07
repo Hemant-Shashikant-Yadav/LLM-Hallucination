@@ -21,6 +21,13 @@ from pathlib import Path
 
 CACHE = Path(__file__).resolve().with_name("ladder_items.json")
 PER_RUNG = 8
+# Pinned Hugging Face dataset versions (the frozen items are in ladder_items.json)
+REVISIONS = {
+    "EleutherAI/hendrycks_math": "21a5633873b6a120296cce3e2df9d5550074f4a3",
+    "allenai/ai2_arc": "210d026faf9955653af8916fad021475a3f00453",
+    "ChilleD/StrategyQA": "705562638fe1d8ca6bb98c66fc8f94d45fda8c83",
+    "cais/mmlu": "c30699e8356da336a370243923dbaf21066bb9fe",
+}
 SEED = 7
 MATH_SUBJECTS = ["algebra", "counting_and_probability", "number_theory", "prealgebra"]
 LETTERS = "abcdefgh"
@@ -54,7 +61,7 @@ def build() -> dict[str, list]:
     # ── Maths ladder: MATH Levels 1-5, numeric answers only (exactly scorable) ──
     pool = []
     for subject in MATH_SUBJECTS:
-        for i, row in enumerate(load_dataset("EleutherAI/hendrycks_math", subject, split="test")):
+        for i, row in enumerate(load_dataset("EleutherAI/hendrycks_math", subject, split="test", revision=REVISIONS["EleutherAI/hendrycks_math"])):
             if "[asy]" in row["problem"] or len(row["problem"]) > 600:
                 continue  # diagrams cannot be read by a text model
             expr = to_sympy(_boxed(row["solution"]))
@@ -68,7 +75,7 @@ def build() -> dict[str, list]:
 
     # ── Critical-thinking ladder ────────────────────────────────────────────────
     def arc(cfg: str, tag: str):
-        ds = load_dataset("allenai/ai2_arc", cfg, split="test")
+        ds = load_dataset("allenai/ai2_arc", cfg, split="test", revision=REVISIONS["allenai/ai2_arc"])
         rows = [r for r in ds if len(r["choices"]["label"]) == 4]
         out = []
         for r in rng.sample(rows, PER_RUNG):
@@ -78,13 +85,13 @@ def build() -> dict[str, list]:
 
     sets["T1 ARC-Easy"] = arc("ARC-Easy", "ae")
     sets["T2 ARC-Challenge"] = arc("ARC-Challenge", "ac")
-    sqa = load_dataset("ChilleD/StrategyQA", split="test")
+    sqa = load_dataset("ChilleD/StrategyQA", split="test", revision=REVISIONS["ChilleD/StrategyQA"])
     sets["T3 StrategyQA"] = [
         (f"sq-{r['qid']}", r["question"], "yesno", "yes" if str(r["answer"]) == "True" else "no")
         for r in rng.sample(list(sqa), PER_RUNG)
     ]
     for tag, cfg in [("T4 logical fallacies", "logical_fallacies"), ("T5 formal logic", "formal_logic")]:
-        ds = load_dataset("cais/mmlu", cfg, split="test")
+        ds = load_dataset("cais/mmlu", cfg, split="test", revision=REVISIONS["cais/mmlu"])
         sets[tag] = [
             (f"{cfg[:3]}-{i}", _mcq(ds[i]["question"], ds[i]["choices"]), "choice", LETTERS[ds[i]["answer"]])
             for i in rng.sample(range(len(ds)), PER_RUNG)

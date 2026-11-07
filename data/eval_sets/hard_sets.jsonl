@@ -1,0 +1,74 @@
+{"id": "m01", "category": "12th maths", "question": "Evaluate the limit of sin(3x)/x as x approaches 0.", "kind": "value", "key": "3"}
+{"id": "m02", "category": "12th maths", "question": "Evaluate the limit of (1 + 2/x)^x as x approaches infinity.", "kind": "value", "key": "exp(2)"}
+{"id": "m03", "category": "12th maths", "question": "Find dy/dx if y = x^2 sin x.", "kind": "expr", "key": "2*x*sin(x) + x**2*cos(x)"}
+{"id": "m04", "category": "12th maths", "question": "Find the derivative of f(x) = e^(2x) ln x at x = 1.", "kind": "value", "key": "exp(2)"}
+{"id": "m05", "category": "12th maths", "question": "Evaluate the definite integral of x e^x dx from x = 0 to x = 1.", "kind": "value", "key": "1"}
+{"id": "m06", "category": "12th maths", "question": "Evaluate the definite integral of sin^2(x) dx from x = 0 to x = π/2.", "kind": "value", "key": "pi/4"}
+{"id": "m07", "category": "12th maths", "question": "Evaluate the definite integral of (ln x)/x dx from x = 1 to x = e.", "kind": "value", "key": "1/2"}
+{"id": "m08", "category": "12th maths", "question": "Find the area of the region bounded by the curves y = x^2 and y = x.", "kind": "value", "key": "1/6"}
+{"id": "m09", "category": "12th maths", "question": "Find the determinant of the matrix [[2, 1, 3], [0, 4, 5], [1, 0, 6]].", "kind": "value", "key": "41"}
+{"id": "m10", "category": "12th maths", "question": "If A = [[1, 2], [3, 4]], find the determinant of the inverse of A.", "kind": "value", "key": "-1/2"}
+{"id": "m11", "category": "12th maths", "question": "Find the angle in degrees between the vectors a = i + j + k and b = i - j + k.", "kind": "value", "key": "acos(1/3)*180/pi"}
+{"id": "m12", "category": "12th maths", "question": "Find the magnitude of a × b for a = 2i + j - k and b = i - j + 2k.", "kind": "value", "key": "sqrt(35)"}
+{"id": "m13", "category": "12th maths", "question": "A bag contains 4 red and 6 black balls. Two balls are drawn at random without replacement. What is the probability that both are red?", "kind": "value", "key": "2/15"}
+{"id": "m14", "category": "12th maths", "question": "Box I contains 3 red and 2 black balls; Box II contains 2 red and 6 black balls. A box is chosen at random and a ball drawn from it is red. What is the probability that it came from Box I?", "kind": "value", "key": "12/17"}
+{"id": "m15", "category": "12th maths", "question": "A fair coin is tossed 6 times. What is the probability of getting exactly 4 heads?", "kind": "value", "key": "15/64"}
+{"id": "m16", "category": "12th maths", "question": "Find the maximum value of f(x) = -x^2 + 4x + 5.", "kind": "value", "key": "9"}
+{"id": "m17", "category": "12th maths", "question": "Solve dy/dx = 2y with y(0) = 3, and find y(1).", "kind": "value", "key": "3*exp(2)"}
+{"id": "m18", "category": "12th maths", "question": "Find the distance of the point (2, 3, -5) from the plane x + 2y - 2z = 9.", "kind": "value", "key": "3"}
+{"id": "m19", "category": "12th maths", "question": "Find the value of k for which f(x) = kx + 1 for x ≤ 2 and f(x) = 3x - 1 for x > 2 is continuous at x = 2.", "kind": "value", "key": "2"}
+{"id": "m20", "category": "12th maths", "question": "Evaluate the definite integral of |x - 1| dx from x = 0 to x = 2.", "kind": "value", "key": "1"}
+{"id": "j01", "category": "JEE MCQ", "question": "In how many ways can the letters of the word MISSISSIPPI be arranged?\n(a) 39916800\n(b) 69300\n(c) 34650\n(d) 17325", "kind": "choice", "key": "c"}
+{"id": "j02", "category": "JEE MCQ", "question": "In how many ways can 5 boys and 4 girls sit in a row so that no two girls sit together?\n(a) 2880\n(b) 86400\n(c) 14400\n(d) 43200", "kind": "choice", "key": "d"}
+{"id": "j03", "category": "JEE MCQ", "question": "How many 4-digit numbers greater than 4000 can be formed using the digits 0, 1, 2, 3, 4, 5 if no digit is repeated?\n(a) 240\n(b) 120\n(c) 100\n(d) 60", "kind": "choice", "key": "b"}
+{"id": "j04", "category": "JEE MCQ", "question": "A committee of 5 is to be formed from 6 men and 4 women. In how many ways can this be done if the committee has at least 2 women?\n(a) 120\n(b) 246\n(c) 186\n(d) 180", "kind": "choice", "key": "c"}
+{"id": "j05", "category": "JEE MCQ", "question": "What is the probability that a leap year selected at random has 53 Sundays?\n(a) 1/7\n(b) 53/366\n(c) 3/7\n(d) 2/7", "kind": "choice", "key": "d"}
+{"id": "j06", "category": "JEE MCQ", "question": "Two dice are thrown. What is the probability that the sum is a prime number?\n(a) 5/12\n(b) 1/2\n(c) 7/18\n(d) 1/3", "kind": "choice", "key": "a"}
+{"id": "j07", "category": "JEE MCQ", "question": "What is the limit of (1 - cos 2x)/x^2 as x approaches 0?\n(a) 1\n(b) 4\n(c) 2\n(d) 1/2", "kind": "choice", "key": "c"}
+{"id": "j08", "category": "JEE MCQ", "question": "What is the value of the integral of x sin x dx from 0 to π?\n(a) 2π\n(b) π\n(c) π/2\n(d) 1", "kind": "choice", "key": "b"}
+{"id": "j09", "category": "JEE MCQ", "question": "What is the local maximum value of f(x) = x^3 - 6x^2 + 9x + 1?\n(a) 1\n(b) 3\n(c) 9\n(d) 5", "kind": "choice", "key": "d"}
+{"id": "j10", "category": "JEE MCQ", "question": "What is the determinant of the matrix [[1, 2, 3], [4, 5, 6], [7, 8, 10]]?\n(a) 0\n(b) 3\n(c) -3\n(d) 1", "kind": "choice", "key": "c"}
+{"id": "j11", "category": "JEE MCQ", "question": "What is the sum of the first 20 terms of the arithmetic progression 3, 7, 11, ...?\n(a) 800\n(b) 840\n(c) 780\n(d) 820", "kind": "choice", "key": "d"}
+{"id": "j12", "category": "JEE MCQ", "question": "What is the coefficient of x^3 in the expansion of (1 + 2x)^6?\n(a) 120\n(b) 160\n(c) 240\n(d) 80", "kind": "choice", "key": "b"}
+{"id": "j13", "category": "JEE MCQ", "question": "In how many ways can 8 people be seated at a round table if two particular people must always sit together?\n(a) 5040\n(b) 720\n(c) 1440\n(d) 2880", "kind": "choice", "key": "c"}
+{"id": "j14", "category": "JEE MCQ", "question": "A die is thrown 4 times. What is the probability of getting at least one six?\n(a) 1/6\n(b) 671/1296\n(c) 2/3\n(d) 625/1296", "kind": "choice", "key": "b"}
+{"id": "j15", "category": "JEE MCQ", "question": "What is the area enclosed by the circle x^2 + y^2 = 16 in the first quadrant?\n(a) 16π\n(b) 8π\n(c) 4π\n(d) 2π", "kind": "choice", "key": "c"}
+{"id": "r01", "category": "real-life", "question": "What is the compound interest on ₹50,000 at 8% per annum, compounded annually, for 3 years?", "kind": "value", "key": "50000*(Rational(108,100)**3 - 1)"}
+{"id": "r02", "category": "real-life", "question": "A loan of ₹2,00,000 is taken at 12% annual interest, repaid in 24 equal monthly instalments (EMI) with monthly compounding. What is the EMI in rupees, to 2 decimal places?", "kind": "value", "key": "200000*Rational(1,100)*Rational(101,100)**24/(Rational(101,100)**24 - 1)"}
+{"id": "r03", "category": "real-life", "question": "A jacket marked at ₹2,500 gets successive discounts of 20% and 10%. What is the final price?", "kind": "value", "key": "1800"}
+{"id": "r04", "category": "real-life", "question": "A phone costs ₹1,180 including 18% GST. What is its price before GST?", "kind": "value", "key": "1000"}
+{"id": "r05", "category": "real-life", "question": "A shopkeeper buys 12 pens for ₹100 and sells 10 pens for ₹100. What is the profit percentage?", "kind": "value", "key": "20"}
+{"id": "r06", "category": "real-life", "question": "A 40-litre mixture has milk and water in the ratio 3:1. How many litres of water must be added to make the ratio 3:2?", "kind": "value", "key": "10"}
+{"id": "r07", "category": "real-life", "question": "A can finish a job in 12 days and B in 18 days. They work together for 4 days, then A leaves. How many more days does B need to finish the job?", "kind": "value", "key": "8"}
+{"id": "r08", "category": "real-life", "question": "A train 240 m long passes a pole in 12 seconds. What is its speed in km/h?", "kind": "value", "key": "72"}
+{"id": "r09", "category": "real-life", "question": "A boat's speed in still water is 15 km/h and the stream flows at 3 km/h. How many hours does it take to go 36 km downstream and come back?", "kind": "value", "key": "5"}
+{"id": "r10", "category": "real-life", "question": "The price of sugar rises by 25%. By what percentage must a family cut its consumption to keep its spending on sugar unchanged?", "kind": "value", "key": "20"}
+{"id": "r11", "category": "real-life", "question": "A sum of money doubles in 8 years at simple interest. What is the annual rate of interest in percent?", "kind": "value", "key": "25/2"}
+{"id": "r12", "category": "real-life", "question": "A car travels 60 km to a town at 30 km/h and returns at 60 km/h. What is its average speed for the whole trip in km/h?", "kind": "value", "key": "40"}
+{"id": "r13", "category": "real-life", "question": "Electricity costs ₹5 per unit for the first 100 units, ₹7 per unit for the next 100 units and ₹9 per unit beyond 200 units. What is the bill for 260 units?", "kind": "value", "key": "1740"}
+{"id": "r14", "category": "real-life", "question": "A car worth ₹6,00,000 depreciates by 15% every year. What is its value after 2 years?", "kind": "value", "key": "433500"}
+{"id": "r15", "category": "real-life", "question": "A town of 50,000 people grows by 4% every year. What is its population after 3 years, rounded to the nearest whole number?", "kind": "value", "key": "56243"}
+{"id": "q01", "category": "reasoning", "question": "Was Jane Austen alive when the Eiffel Tower was completed?", "kind": "yesno", "key": "no"}
+{"id": "q02", "category": "reasoning", "question": "Could a person born in 1950 have watched the first Moon landing live on TV while still a teenager?", "kind": "yesno", "key": "yes"}
+{"id": "q03", "category": "reasoning", "question": "Does the capital city of Australia have a larger population than Sydney?", "kind": "yesno", "key": "no"}
+{"id": "q04", "category": "reasoning", "question": "Did World War I end before the Titanic sank?", "kind": "yesno", "key": "no"}
+{"id": "q05", "category": "reasoning", "question": "Was the Taj Mahal completed before the United States declared independence?", "kind": "yesno", "key": "yes"}
+{"id": "q06", "category": "reasoning", "question": "At the summit of Mount Everest, does water boil at a temperature higher than 100 °C?", "kind": "yesno", "key": "no"}
+{"id": "q07", "category": "reasoning", "question": "Are there more planets in the Solar System than continents on Earth?", "kind": "yesno", "key": "yes"}
+{"id": "q08", "category": "reasoning", "question": "Did Albert Einstein receive his Nobel Prize after World War I had ended?", "kind": "yesno", "key": "yes"}
+{"id": "q09", "category": "reasoning", "question": "Can a person 1.5 m tall stand on the bottom of a pool 2 m deep with their head above the water?", "kind": "yesno", "key": "no"}
+{"id": "q10", "category": "reasoning", "question": "Is the Amazon River longer than the Ganges?", "kind": "yesno", "key": "yes"}
+{"id": "q11", "category": "reasoning", "question": "Was Mahatma Gandhi alive when India became independent?", "kind": "yesno", "key": "yes"}
+{"id": "q12", "category": "reasoning", "question": "Was the first iPhone released before Facebook was founded?", "kind": "yesno", "key": "no"}
+{"id": "h01", "category": "hard maths", "question": "Evaluate the definite integral of x sin^2(x) dx from x = 0 to x = π.", "kind": "value", "key": "pi**2/4"}
+{"id": "h02", "category": "hard maths", "question": "In how many ways can the letters of the word ENGINEERING be arranged so that no two E's are next to each other?", "kind": "value", "key": "141120"}
+{"id": "h03", "category": "hard maths", "question": "Five cards are dealt from a standard 52-card deck. What is the probability that the hand is exactly two pair (two cards of one rank, two of another rank, and one card of a third rank)?", "kind": "value", "key": "198/4165"}
+{"id": "h04", "category": "hard maths", "question": "Evaluate the limit of (e^x - 1 - x)/x^2 as x approaches 0.", "kind": "value", "key": "1/2"}
+{"id": "h05", "category": "hard maths", "question": "Find the area enclosed between the curves y = sin x and y = cos x from x = 0 to x = π/2.", "kind": "value", "key": "2*sqrt(2) - 2"}
+{"id": "h06", "category": "hard maths", "question": "How many solutions does x + y + z = 10 have in positive integers?", "kind": "value", "key": "36"}
+{"id": "h07", "category": "hard maths", "question": "If A = [[2, 1], [1, 2]], what is the sum of all entries of A^5?", "kind": "value", "key": "486"}
+{"id": "h08", "category": "hard maths", "question": "In a group of 23 people, what is the probability that at least two share a birthday? Assume 365 equally likely birthdays and give the answer to 4 decimal places.", "kind": "value", "key": "0.5073"}
+{"id": "h09", "category": "hard maths", "question": "Find the shortest distance between the lines r = (1, 2, 3) + t(1, -1, 1) and r = (2, -1, 1) + s(2, 1, -1).", "kind": "value", "key": "5*sqrt(2)/2"}
+{"id": "h10", "category": "hard maths", "question": "What is the coefficient of x^5 in the expansion of (1 + x + x^2)^6?", "kind": "value", "key": "126"}
+{"id": "h11", "category": "hard maths", "question": "Evaluate the definite integral of x^2/(1 + x^3) dx from x = 0 to x = 1.", "kind": "value", "key": "log(2)/3"}
+{"id": "h12", "category": "hard maths", "question": "How many 5-digit numbers divisible by 3 can be formed using the digits 0, 1, 2, 3, 4, 5 without repetition?", "kind": "value", "key": "216"}
