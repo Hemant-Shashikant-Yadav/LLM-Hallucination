@@ -5,6 +5,7 @@
   "split": "test",
   "revision": "740312add88f781978c0658806c59bc2815b9866",
   "license": "MIT",
+  "reported_results_used": "items 0-99 (test), 500-539 (dev)",
   "file": "data/eval_sets/full/gsm8k_test.jsonl",
   "count": 1319,
   "sha256": "38ab30905125a2d45124b1bdc8e852d44246104bb027d8ae624cf6d958feaefb"
@@ -15,6 +16,7 @@
   "split": "validation",
   "revision": "741b8276f2d1982aa3d5b832d3ee81ed3b896490",
   "license": "Apache-2.0",
+  "reported_results_used": "items 0-99 (test), 500-539 (dev)",
   "file": "data/eval_sets/full/truthfulqa.jsonl",
   "count": 817,
   "sha256": "1962c3457ac086c7d675d29afcae4fe7e6269c4f272b9d7e0123a70c58ce88d2"
@@ -46,5 +48,11 @@
   "file": "data/eval_sets/full/jeebench.jsonl",
   "count": 515,
   "sha256": "6ae852bf68ac5e40eb556a6e64df1941eb524bbc78915c5f4c67c419083008ab"
+ },
+ "other_sets_defined_in_code": {
+  "difficulty_ladder": "evaluation/ladder_items.json (80: MATH L1-5, ARC, StrategyQA, MMLU; 8 per rung, seed 7, pinned revisions in evaluation/ladder_sets.py)",
+  "hard_sets": "evaluation/hard_sets.py (74; keys verified with sympy or brute force)",
+  "mcq_10th": "evaluation/mcq_10th.py (15)",
+  "smoke_general": "evaluation/smoke_general.py (16)"
  }
 }

@@ -28,7 +28,7 @@ import pandas as pd
 from app.answer_utils import extract_final_number, numbers_match
 
 EVAL = Path(__file__).resolve().parent
-OUT_DIR = EVAL / "model_compare"
+OUT_DIR = EVAL / "results" / "model_compare"
 
 
 def items() -> list[dict]:
@@ -36,7 +36,7 @@ def items() -> list[dict]:
     from evaluation import hard_eval
 
     rows = []
-    dev = pd.read_csv(EVAL / "dev_qwen3b_v4" / "results_gsm8k.csv")
+    dev = pd.read_csv(EVAL / "results/dev/qwen3b_v4" / "results_gsm8k.csv")
     for r in dev[dev.config == "baseline"].itertuples():
         rows.append({"set": "gsm8k_dev", "id": r.sample_id, "category": "GSM8K dev",
                      "kind": "gsm8k", "key": str(r.numerical_answer), "question": r.prompt})
@@ -83,11 +83,11 @@ def _stored_qwen25() -> list[dict]:
     """qwen2.5:3b's drafts from the runs already on disk (the raw column of each)."""
     by_id = {it["id"]: it for it in items()}
     rows = []
-    dev = pd.read_csv(EVAL / "dev_qwen3b_v4" / "results_gsm8k.csv")
+    dev = pd.read_csv(EVAL / "results/dev/qwen3b_v4" / "results_gsm8k.csv")
     for r in dev[dev.config == "baseline"].itertuples():
         rows.append({**by_id[r.sample_id], "answer": str(r.answer), "seconds": r.wall_latency_ms / 1000,
                      "tokens": r.tokens_generated})
-    for path in ("hard_results/hard_final.jsonl", "hard_results/ladder_v2.jsonl"):
+    for path in ("results/hard_sets_and_ladder/hard_final.jsonl", "results/hard_sets_and_ladder/ladder_v2.jsonl"):
         for line in (EVAL / path).read_text(encoding="utf-8").splitlines():
             r = json.loads(line)
             rows.append({**by_id[r["id"]], "answer": r["draft"], "seconds": None, "tokens": None})

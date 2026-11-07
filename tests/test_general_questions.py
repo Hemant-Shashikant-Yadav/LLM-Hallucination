@@ -1,5 +1,5 @@
 """
-Offline tests for general-question handling (doc/IMPROVEMENT_ROADMAP.md §4):
+Offline tests for general-question handling (smoke list in doc/06_roadmap.md):
 task routing, answer parsing, exact calculation and the freshness rule.
 
     python -m unittest discover -s tests -v

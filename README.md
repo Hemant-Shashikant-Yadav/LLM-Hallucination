@@ -106,10 +106,10 @@ curl -X POST http://localhost:8000/api/v1/query \
 # Start the server first, then in another terminal:
 python -m evaluation.benchmark_runner --n 100 \
     --configs baseline full_framework reference_verifier \
-    --out-dir evaluation/results_v4
+    --out-dir evaluation/results/phase1_llama2_all_configs
 
 # Score / report existing CSVs again (TruthfulQA judge + statistics)
-python -m evaluation.benchmark_runner --judge-only --out-dir evaluation/results_v4
+python -m evaluation.benchmark_runner --judge-only --out-dir evaluation/results/phase1_llama2_all_configs
 ```
 
 - `baseline` is the exact greedy draft the framework received, so every comparison is paired.
@@ -121,8 +121,8 @@ python -m evaluation.benchmark_runner --judge-only --out-dir evaluation/results_
 ### Figures and Presentation
 
 ```bash
-python -m evaluation.presentation_plots --results evaluation/results_v4
-python -m evaluation.build_presentation --results evaluation/results_v4 \
+python -m evaluation.presentation_plots --results evaluation/results/phase1_llama2_all_configs
+python -m evaluation.build_presentation --results evaluation/results/phase1_llama2_all_configs \
     --source Hallucination_Mitigation_Presentation_Beautified.pptx \
     --output Hallucination_Mitigation_Phase1_Review.pptx
 ```

@@ -12,7 +12,7 @@ Reads the scored CSVs written by `evaluation.benchmark_runner` and writes
   fig_architecture.png      Phase 1 pipeline diagram with the models used
 
 Usage:
-  python -m evaluation.presentation_plots --results evaluation/results_v4 --out evaluation/results_v4/figures
+  python -m evaluation.presentation_plots --results evaluation/results/phase1_llama2_all_configs --out evaluation/results/phase1_llama2_all_configs/figures
 """
 
 from __future__ import annotations
@@ -331,7 +331,7 @@ def fig_architecture(out: Path, setup: str = "asym") -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--results", default="evaluation/results_v4")
+    ap.add_argument("--results", default="evaluation/results/phase1_llama2_all_configs")
     ap.add_argument("--out", default=None)
     ap.add_argument("--setup", choices=["asym", "llama2_only"], default="asym")
     args = ap.parse_args()

@@ -14,8 +14,8 @@ Datasets:
   GSM8K      (main, test)             — strict final-answer match
 
 Usage:
-  python -m evaluation.benchmark_runner --n 100 --out-dir evaluation/results_v4
-  python -m evaluation.benchmark_runner --judge-only --out-dir evaluation/results_v4
+  python -m evaluation.benchmark_runner --n 100 --out-dir evaluation/results/phase1_llama2_all_configs
+  python -m evaluation.benchmark_runner --judge-only --out-dir evaluation/results/phase1_llama2_all_configs
 """
 
 from __future__ import annotations
@@ -57,7 +57,8 @@ REQUEST_TIMEOUT = 1800.0
 # llama2:7b default silently ran a qwen benchmark on llama2, partly on CPU.
 GENERATOR_MODEL = settings.ollama_model
 VERIFIER_MODEL = "llama3.1:8b"
-DEFAULT_OUT_DIR = Path(__file__).resolve().parent / "results_v4"
+# Each run should get its own --out-dir under evaluation/results/; never reuse a finished one
+DEFAULT_OUT_DIR = Path(__file__).resolve().parent / "results" / "latest_run"
 
 CONFIG_ENDPOINTS = {
     "full_framework": ("/api/v1/query", GENERATOR_MODEL),
@@ -78,7 +79,7 @@ DISPLAY_NAMES = {
 
 
 # Pinned Hugging Face dataset versions: a rerun reads exactly the questions in the paper
-# (frozen copies with checksums: data/eval_sets/, python -m evaluation.export_eval_sets)
+# (frozen copies with checksums: data/eval_sets/full/, python -m evaluation.export_eval_sets)
 GSM8K_REVISION = "740312add88f781978c0658806c59bc2815b9866"
 TRUTHFULQA_REVISION = "741b8276f2d1982aa3d5b832d3ee81ed3b896490"
 

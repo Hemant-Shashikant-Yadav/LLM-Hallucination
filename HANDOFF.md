@@ -8,7 +8,7 @@ same draft. Work moves to a Mac with more memory, for bigger models and bigger t
 1. **One model in every pipeline role** (`.env`: `DID_OLLAMA_MODEL` = `DID_OLLAMA_JUDGE_MODEL`).
    The model may change. The **evaluation judge must be a different model** (now `llama3.1:8b`:
    `benchmark_runner --judge-model`, `evaluation/hard_eval.py` `_JUDGE_MODEL`).
-2. Must answer **any basic web or maths question** (smoke list: `doc/IMPROVEMENT_ROADMAP.md` §4).
+2. Must answer **any basic web or maths question** (smoke list: `doc/06_roadmap.md`).
 3. Commits: pre-existing changes and Claude's changes in separate commits. Commit/push only when asked.
 4. One model and one benchmark at a time. Before a run, `ollama ps` must show only the pipeline model.
 
@@ -17,20 +17,20 @@ same draft. Work moves to a Mac with more memory, for bigger models and bigger t
 rules, calculator) · `app/layer1_triage/` (semantic entropy, task router) · `app/layer2_nli_rag/`
 (DeBERTa NLI, search, reviser) · `app/layer3_halluclean/program_verifier.py` (vote + sandboxed
 programs) · `app/config.py` (all settings, env prefix `DID_`) · `evaluation/` (runners, results).
-Detailed backlog and evidence: `doc/IMPROVEMENT_ROADMAP.md`.
+Docs: `doc/` (overview, pipeline, evaluation, results, history, roadmap); per-file code notes beside each `app/*.py` as `*.README.md`.
 
 ## Results so far (qwen2.5:3b, GTX 1650 4 GB). Regenerate: `python -m evaluation.paper_results`
 | Test | N | Raw | Framework | Fixed/broken | p |
 |---|---|---|---|---|---|
-| GSM8K test 0–99 (`results_v6_qwen3b`) | 100 | 84 | 88 | 5/1 | 0.22 |
-| TruthfulQA test 0–99, judge truthful (`results_v5_qwen3b`) | 100 | 66% | 63% | 1/4 | 0.38 |
+| GSM8K test 0–99 (`results/test_qwen3b_v6`) | 100 | 84 | 88 | 5/1 | 0.22 |
+| TruthfulQA test 0–99, judge truthful (`results/test_qwen3b_v5`) | 100 | 66% | 63% | 1/4 | 0.38 |
 | Hard sets: 12th maths, JEE, real-life, reasoning | 74 | 61 | 65 | 5/1 | 0.22 |
 | Difficulty ladder: MATH L1–5, ARC, StrategyQA, logic | 80 | 61 | 66 | 7/2 | 0.18 |
 | GSM8K dev 500–539 (design run) | 40 | 28 | 35 | 7/0 | 0.016 |
 | Smoke test (16 basic questions) | 16 | | 15 pass | | |
-Test sets: frozen copies with pinned dataset versions and checksums in `data/eval_sets/`
-(`MANIFEST.json`; rebuild with `python -m evaluation.export_eval_sets`). Full test sets for large runs
-(8,151 questions) in `data/eval_sets/full/`: GSM8K 1,319 · TruthfulQA 817 · MATH 5,000 · MATH-500 · JEEBench 515.
+Test sets (8,151 questions, pinned versions, checksums) in `data/eval_sets/full/`: GSM8K 1,319 ·
+TruthfulQA 817 · MATH 5,000 · MATH-500 · JEEBench 515. `MANIFEST.json` lists the items the results above
+used; ladder/hard/MCQ/smoke sets are defined in code. Rebuild: `python -m evaluation.export_eval_sets`.
 Phase 1 reference (llama2:7b): TruthfulQA 65% → 83%, the same +18 under two judges.
 Reports: [Results Summary](https://claude.ai/artifact/CpEAGKraVZmCeHi2ge8u8g) ·
 [detailed report](https://claude.ai/artifact/26qLfLwSTTtmWRXzPCbu64).

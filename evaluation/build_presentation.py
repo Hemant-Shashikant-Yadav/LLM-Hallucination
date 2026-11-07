@@ -9,7 +9,7 @@ so the deck can be rebuilt after a new benchmark run.
 Usage:
   python -m evaluation.build_presentation \
       --source Hallucination_Mitigation_Presentation_Beautified.pptx \
-      --results evaluation/results_v4 \
+      --results evaluation/results/phase1_llama2_all_configs \
       --output Hallucination_Mitigation_Phase1_Review.pptx
 """
 
@@ -663,7 +663,7 @@ def _ensure_jpg_content_type(path: Path) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--source", default="Hallucination_Mitigation_Presentation_Beautified.pptx")
-    ap.add_argument("--results", default="evaluation/results_v4")
+    ap.add_argument("--results", default="evaluation/results/phase1_llama2_all_configs")
     ap.add_argument("--output", default="Hallucination_Mitigation_Phase1_Results.pptx")
     ap.add_argument("--setup", choices=list(SETUPS), default="asym",
                     help="asym = llama2 drafts + llama3.1 verifier; llama2_only = llama2 in every role")

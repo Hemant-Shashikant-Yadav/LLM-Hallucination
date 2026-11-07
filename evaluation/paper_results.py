@@ -21,7 +21,7 @@ from scipy.stats import binomtest
 from app.answer_utils import extract_final_number, numbers_match
 
 EVAL = Path(__file__).resolve().parent
-OUT = EVAL / "paper_results.json"
+OUT = EVAL / "results/paper_results.json"
 
 
 def _paired(raw: list[bool], fw: list[bool]) -> dict:
@@ -63,8 +63,8 @@ def truthfulqa(run: str) -> dict:
 def question_set(set_name: str, tag: str) -> dict:
     from evaluation.hard_eval import is_correct
 
-    judged = json.loads((EVAL / "hard_results" / "yesno_judge_cache.json").read_text(encoding="utf-8"))
-    path = EVAL / "hard_results" / f"{set_name}_{tag}.jsonl"
+    judged = json.loads((EVAL / "results/hard_sets_and_ladder" / "yesno_judge_cache.json").read_text(encoding="utf-8"))
+    path = EVAL / "results/hard_sets_and_ladder" / f"{set_name}_{tag}.jsonl"
     rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     by_cat: dict[str, tuple[list, list]] = {}
     for row in rows:
@@ -73,31 +73,31 @@ def question_set(set_name: str, tag: str) -> dict:
         fw.append(is_correct(row, row["answer"], judged))
     out = {cat: _paired(r, f) for cat, (r, f) in by_cat.items()}
     out["ALL"] = _paired([x for r, _ in by_cat.values() for x in r], [x for _, f in by_cat.values() for x in f])
-    out["source"] = f"evaluation/hard_results/{path.name}"
+    out["source"] = f"evaluation/results/hard_sets_and_ladder/{path.name}"
     return out
 
 
 def mcq_10th() -> dict:
-    rows = json.loads((EVAL / "mcq_10th_results.json").read_text(encoding="utf-8"))
+    rows = json.loads((EVAL / "results/mcq_10th.json").read_text(encoding="utf-8"))
     out = _paired([r["baseline_ok"] for r in rows], [r["framework_ok"] for r in rows])
-    out["source"] = "evaluation/mcq_10th_results.json"
+    out["source"] = "evaluation/results/mcq_10th.json"
     return out
 
 
 def smoke() -> dict:
-    log = EVAL / "run_logs" / "2026-11-06_smoke_final.log"
+    log = EVAL / "results/run_logs" / "2026-11-06_smoke_final.log"
     passed, total = log.read_text(encoding="utf-8").strip().splitlines()[-1].split()[0].split("/")
     return {"passed": int(passed), "n": int(total), "source": f"evaluation/run_logs/{log.name}"}
 
 
 def main() -> None:
     results = {
-        "gsm8k_test_v6": gsm8k("results_v6_qwen3b"),
-        "gsm8k_test_v5": gsm8k("results_v5_qwen3b"),
-        "gsm8k_dev_v3_design": gsm8k("dev_qwen3b_v3"),          # items 500-539: chose Layer 3
-        "gsm8k_dev_v4_recheck": gsm8k("dev_qwen3b_v4"),         # same items, after hard-set changes
-        "truthfulqa_test_v5": truthfulqa("results_v5_qwen3b"),
-        "truthfulqa_dev_v2_design": truthfulqa("dev_qwen3b_v2"),  # chose evidence-gated Layer 2
+        "gsm8k_test_v6": gsm8k("results/test_qwen3b_v6"),
+        "gsm8k_test_v5": gsm8k("results/test_qwen3b_v5"),
+        "gsm8k_dev_v3_design": gsm8k("results/dev/qwen3b_v3"),          # items 500-539: chose Layer 3
+        "gsm8k_dev_v4_recheck": gsm8k("results/dev/qwen3b_v4"),         # same items, after hard-set changes
+        "truthfulqa_test_v5": truthfulqa("results/test_qwen3b_v5"),
+        "truthfulqa_dev_v2_design": truthfulqa("results/dev/qwen3b_v2"),  # chose evidence-gated Layer 2
         "hard_sets_final": question_set("hard", "final"),
         "hard_sets_old_framework": question_set("hard", "before"),
         "ladder_first_run": question_set("ladder", "final"),
@@ -105,9 +105,9 @@ def main() -> None:
         "mcq_10th": mcq_10th(),
         "smoke_general": smoke(),
         "judge_check_phase1": json.loads(
-            (EVAL / "judge_check" / "phase1_llama2_rejudged.summary.json").read_text(encoding="utf-8")),
-        "phase1_llama2_gsm8k": gsm8k("results_v4_llama2_only"),
-        "phase1_llama2_truthfulqa": truthfulqa("results_v4_llama2_only"),
+            (EVAL / "results/judge_check" / "phase1_llama2_rejudged.summary.json").read_text(encoding="utf-8")),
+        "phase1_llama2_gsm8k": gsm8k("results/phase1_llama2"),
+        "phase1_llama2_truthfulqa": truthfulqa("results/phase1_llama2"),
     }
     OUT.write_text(json.dumps(results, indent=1), encoding="utf-8")
 

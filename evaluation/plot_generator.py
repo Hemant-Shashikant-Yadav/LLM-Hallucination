@@ -44,8 +44,8 @@ EVAL_DIR = Path(__file__).resolve().parent
 PLOTS_DIR = EVAL_DIR / "plots"
 PLOTS_DIR.mkdir(parents=True, exist_ok=True)
 
-CSV_TRUTHFULQA = EVAL_DIR / "results_truthfulqa.csv"
-CSV_GSM8K = EVAL_DIR / "results_gsm8k.csv"
+CSV_TRUTHFULQA = EVAL_DIR / "results" / "legacy" / "results_truthfulqa.csv"
+CSV_GSM8K = EVAL_DIR / "results" / "legacy" / "results_gsm8k.csv"
 
 # ── Matplotlib Config (publication-quality) ──────────────────────────────────
 

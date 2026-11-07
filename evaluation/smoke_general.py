@@ -1,7 +1,7 @@
 """
 Live smoke test: basic web/factual and math questions through the running API.
 
-Acceptance test for the general-question requirement (doc/IMPROVEMENT_ROADMAP.md §4):
+Acceptance test for the general-question requirement (smoke list in doc/06_roadmap.md):
 every question must return HTTP 200, take the expected route, contain the expected
 answer, and finish without degradations.
 

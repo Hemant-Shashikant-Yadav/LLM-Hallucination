@@ -109,6 +109,6 @@ async def main(api_base: str, out: Path) -> int:
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--api-base", default="http://127.0.0.1:8000")
-    ap.add_argument("--out", default="evaluation/mcq_10th_results.json")
+    ap.add_argument("--out", default="evaluation/results/mcq_10th.json")
     args = ap.parse_args()
     sys.exit(asyncio.run(main(args.api_base, Path(args.out))))

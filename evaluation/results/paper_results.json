@@ -1,0 +1,410 @@
+{
+ "gsm8k_test_v6": {
+  "n": 100,
+  "raw": 84,
+  "framework": 88,
+  "fixed": 5,
+  "broken": 1,
+  "mcnemar_p": 0.219,
+  "source": "evaluation/results/test_qwen3b_v6/results_gsm8k.csv",
+  "framework_latency_s": 51.8,
+  "framework_tokens": 4693,
+  "as_first_scored": {
+   "raw": 84,
+   "framework": 88
+  }
+ },
+ "gsm8k_test_v5": {
+  "n": 100,
+  "raw": 83,
+  "framework": 87,
+  "fixed": 5,
+  "broken": 1,
+  "mcnemar_p": 0.219,
+  "source": "evaluation/results/test_qwen3b_v5/results_gsm8k.csv",
+  "framework_latency_s": 48.7,
+  "framework_tokens": 4715,
+  "as_first_scored": {
+   "raw": 80,
+   "framework": 86
+  }
+ },
+ "gsm8k_dev_v3_design": {
+  "n": 40,
+  "raw": 28,
+  "framework": 35,
+  "fixed": 7,
+  "broken": 0,
+  "mcnemar_p": 0.016,
+  "source": "evaluation/results/dev/qwen3b_v3/results_gsm8k.csv",
+  "framework_latency_s": 96.6,
+  "framework_tokens": 5381,
+  "as_first_scored": {
+   "raw": 28,
+   "framework": 35
+  }
+ },
+ "gsm8k_dev_v4_recheck": {
+  "n": 40,
+  "raw": 30,
+  "framework": 34,
+  "fixed": 4,
+  "broken": 0,
+  "mcnemar_p": 0.125,
+  "source": "evaluation/results/dev/qwen3b_v4/results_gsm8k.csv",
+  "framework_latency_s": 55.8,
+  "framework_tokens": 5355
+ },
+ "truthfulqa_test_v5": {
+  "n": 100,
+  "raw_pct": 66.0,
+  "framework_pct": 63.0,
+  "mcnemar_p": 0.375,
+  "rouge_raw_pct": 46.0,
+  "rouge_framework_pct": 47.0,
+  "source": "evaluation/results/test_qwen3b_v5/summary_truthfulqa.csv (LLM judge)"
+ },
+ "truthfulqa_dev_v2_design": {
+  "n": 40,
+  "raw_pct": 77.5,
+  "framework_pct": 77.5,
+  "mcnemar_p": 1.0,
+  "rouge_raw_pct": 47.5,
+  "rouge_framework_pct": 47.5,
+  "source": "evaluation/results/dev/qwen3b_v2/summary_truthfulqa.csv (LLM judge)"
+ },
+ "hard_sets_final": {
+  "12th maths": {
+   "n": 20,
+   "raw": 20,
+   "framework": 20,
+   "fixed": 0,
+   "broken": 0,
+   "mcnemar_p": 1.0
+  },
+  "JEE MCQ": {
+   "n": 15,
+   "raw": 13,
+   "framework": 14,
+   "fixed": 1,
+   "broken": 0,
+   "mcnemar_p": 1.0
+  },
+  "real-life": {
+   "n": 15,
+   "raw": 13,
+   "framework": 15,
+   "fixed": 2,
+   "broken": 0,
+   "mcnemar_p": 0.5
+  },
+  "reasoning": {
+   "n": 12,
+   "raw": 7,
+   "framework": 7,
+   "fixed": 1,
+   "broken": 1,
+   "mcnemar_p": 1.0
+  },
+  "hard maths": {
+   "n": 12,
+   "raw": 8,
+   "framework": 9,
+   "fixed": 1,
+   "broken": 0,
+   "mcnemar_p": 1.0
+  },
+  "ALL": {
+   "n": 74,
+   "raw": 61,
+   "framework": 65,
+   "fixed": 5,
+   "broken": 1,
+   "mcnemar_p": 0.219
+  },
+  "source": "evaluation/results/hard_sets_and_ladder/hard_final.jsonl"
+ },
+ "hard_sets_old_framework": {
+  "12th maths": {
+   "n": 20,
+   "raw": 20,
+   "framework": 13,
+   "fixed": 0,
+   "broken": 7,
+   "mcnemar_p": 0.016
+  },
+  "JEE MCQ": {
+   "n": 15,
+   "raw": 13,
+   "framework": 14,
+   "fixed": 1,
+   "broken": 0,
+   "mcnemar_p": 1.0
+  },
+  "real-life": {
+   "n": 15,
+   "raw": 13,
+   "framework": 14,
+   "fixed": 1,
+   "broken": 0,
+   "mcnemar_p": 1.0
+  },
+  "reasoning": {
+   "n": 12,
+   "raw": 7,
+   "framework": 7,
+   "fixed": 0,
+   "broken": 0,
+   "mcnemar_p": 1.0
+  },
+  "hard maths": {
+   "n": 12,
+   "raw": 8,
+   "framework": 4,
+   "fixed": 0,
+   "broken": 4,
+   "mcnemar_p": 0.125
+  },
+  "ALL": {
+   "n": 74,
+   "raw": 61,
+   "framework": 52,
+   "fixed": 2,
+   "broken": 11,
+   "mcnemar_p": 0.022
+  },
+  "source": "evaluation/results/hard_sets_and_ladder/hard_before.jsonl"
+ },
+ "ladder_first_run": {
+  "MATH L1": {
+   "n": 8,
+   "raw": 8,
+   "framework": 8,
+   "fixed": 0,
+   "broken": 0,
+   "mcnemar_p": 1.0
+  },
+  "MATH L2": {
+   "n": 8,
+   "raw": 6,
+   "framework": 7,
+   "fixed": 1,
+   "broken": 0,
+   "mcnemar_p": 1.0
+  },
+  "MATH L3": {
+   "n": 8,
+   "raw": 7,
+   "framework": 7,
+   "fixed": 1,
+   "broken": 1,
+   "mcnemar_p": 1.0
+  },
+  "MATH L4": {
+   "n": 8,
+   "raw": 7,
+   "framework": 8,
+   "fixed": 1,
+   "broken": 0,
+   "mcnemar_p": 1.0
+  },
+  "MATH L5": {
+   "n": 8,
+   "raw": 5,
+   "framework": 4,
+   "fixed": 0,
+   "broken": 1,
+   "mcnemar_p": 1.0
+  },
+  "T1 ARC-Easy": {
+   "n": 8,
+   "raw": 6,
+   "framework": 6,
+   "fixed": 0,
+   "broken": 0,
+   "mcnemar_p": 1.0
+  },
+  "T2 ARC-Challenge": {
+   "n": 8,
+   "raw": 8,
+   "framework": 7,
+   "fixed": 0,
+   "broken": 1,
+   "mcnemar_p": 1.0
+  },
+  "T3 StrategyQA": {
+   "n": 8,
+   "raw": 6,
+   "framework": 6,
+   "fixed": 0,
+   "broken": 0,
+   "mcnemar_p": 1.0
+  },
+  "T4 logical fallacies": {
+   "n": 8,
+   "raw": 4,
+   "framework": 4,
+   "fixed": 0,
+   "broken": 0,
+   "mcnemar_p": 1.0
+  },
+  "T5 formal logic": {
+   "n": 8,
+   "raw": 4,
+   "framework": 4,
+   "fixed": 0,
+   "broken": 0,
+   "mcnemar_p": 1.0
+  },
+  "ALL": {
+   "n": 80,
+   "raw": 61,
+   "framework": 61,
+   "fixed": 3,
+   "broken": 3,
+   "mcnemar_p": 1.0
+  },
+  "source": "evaluation/results/hard_sets_and_ladder/ladder_final.jsonl"
+ },
+ "ladder_v2": {
+  "MATH L1": {
+   "n": 8,
+   "raw": 8,
+   "framework": 8,
+   "fixed": 0,
+   "broken": 0,
+   "mcnemar_p": 1.0
+  },
+  "MATH L2": {
+   "n": 8,
+   "raw": 6,
+   "framework": 7,
+   "fixed": 1,
+   "broken": 0,
+   "mcnemar_p": 1.0
+  },
+  "MATH L3": {
+   "n": 8,
+   "raw": 7,
+   "framework": 8,
+   "fixed": 1,
+   "broken": 0,
+   "mcnemar_p": 1.0
+  },
+  "MATH L4": {
+   "n": 8,
+   "raw": 7,
+   "framework": 7,
+   "fixed": 1,
+   "broken": 1,
+   "mcnemar_p": 1.0
+  },
+  "MATH L5": {
+   "n": 8,
+   "raw": 5,
+   "framework": 6,
+   "fixed": 1,
+   "broken": 0,
+   "mcnemar_p": 1.0
+  },
+  "T1 ARC-Easy": {
+   "n": 8,
+   "raw": 6,
+   "framework": 7,
+   "fixed": 1,
+   "broken": 0,
+   "mcnemar_p": 1.0
+  },
+  "T2 ARC-Challenge": {
+   "n": 8,
+   "raw": 8,
+   "framework": 8,
+   "fixed": 0,
+   "broken": 0,
+   "mcnemar_p": 1.0
+  },
+  "T3 StrategyQA": {
+   "n": 8,
+   "raw": 6,
+   "framework": 5,
+   "fixed": 0,
+   "broken": 1,
+   "mcnemar_p": 1.0
+  },
+  "T4 logical fallacies": {
+   "n": 8,
+   "raw": 4,
+   "framework": 6,
+   "fixed": 2,
+   "broken": 0,
+   "mcnemar_p": 0.5
+  },
+  "T5 formal logic": {
+   "n": 8,
+   "raw": 4,
+   "framework": 4,
+   "fixed": 0,
+   "broken": 0,
+   "mcnemar_p": 1.0
+  },
+  "ALL": {
+   "n": 80,
+   "raw": 61,
+   "framework": 66,
+   "fixed": 7,
+   "broken": 2,
+   "mcnemar_p": 0.18
+  },
+  "source": "evaluation/results/hard_sets_and_ladder/ladder_v2.jsonl"
+ },
+ "mcq_10th": {
+  "n": 15,
+  "raw": 15,
+  "framework": 15,
+  "fixed": 0,
+  "broken": 0,
+  "mcnemar_p": 1.0,
+  "source": "evaluation/results/mcq_10th.json"
+ },
+ "smoke_general": {
+  "passed": 15,
+  "n": 16,
+  "source": "evaluation/run_logs/2026-11-06_smoke_final.log"
+ },
+ "judge_check_phase1": {
+  "qwen2.5:7b (Phase 1 judge)": {
+   "baseline": 61.0,
+   "full_framework": 79.0
+  },
+  "llama3.1:8b": {
+   "baseline": 65.0,
+   "full_framework": 83.0
+  },
+  "agreement_pct": 82.0,
+  "cohen_kappa": 0.554
+ },
+ "phase1_llama2_gsm8k": {
+  "n": 100,
+  "raw": 27,
+  "framework": 34,
+  "fixed": 15,
+  "broken": 8,
+  "mcnemar_p": 0.21,
+  "source": "evaluation/results/phase1_llama2/results_gsm8k.csv",
+  "framework_latency_s": 116.0,
+  "framework_tokens": 3709,
+  "as_first_scored": {
+   "raw": 24,
+   "framework": 32
+  }
+ },
+ "phase1_llama2_truthfulqa": {
+  "n": 100,
+  "raw_pct": 61.0,
+  "framework_pct": 79.0,
+  "mcnemar_p": 0.0039,
+  "rouge_raw_pct": 51.0,
+  "rouge_framework_pct": 58.0,
+  "source": "evaluation/results/phase1_llama2/summary_truthfulqa.csv (LLM judge)"
+ }
+}

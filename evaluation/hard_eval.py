@@ -22,7 +22,7 @@ import httpx
 
 from app.answer_utils import extract_yes_no
 
-OUT_DIR = Path(__file__).resolve().parent / "hard_results"
+OUT_DIR = Path(__file__).resolve().parent / "results" / "hard_sets_and_ladder"
 _SET = "hard"  # 'hard' (evaluation/hard_sets.py), 'ladder', or a frozen full set below
 # Full test sets frozen in data/eval_sets/full/ (python -m evaluation.export_eval_sets --full)
 FULL_SETS = {"math500": "math500", "math": "math_test", "jeebench": "jeebench"}

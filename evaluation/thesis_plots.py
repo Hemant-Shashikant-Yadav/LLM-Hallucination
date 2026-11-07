@@ -27,7 +27,7 @@ def find_csvs():
     paths = []
     for f in ["results_truthfulqa.csv", "results_gsm8k.csv"]:
         # Check current dir, eval dir, and result-2 dir
-        p1 = EVAL_DIR / f
+        p1 = EVAL_DIR / "results" / "legacy" / f
         p2 = Path(f"result-2/{f}")
         p3 = Path(f)
         

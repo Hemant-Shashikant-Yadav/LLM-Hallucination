@@ -6,7 +6,7 @@ get harder.
   critical thinking (Layer 2) ARC-Easy → ARC-Challenge → StrategyQA → MMLU logical
                              fallacies → MMLU formal logic
 
-Items are sampled once with a fixed seed and cached in ladder_items.json, so every run
+Items are sampled once with a fixed seed and cached in question_sets/ladder_items.json, so every run
 (and every later model) answers exactly the same questions.
 
 Usage:
@@ -19,9 +19,9 @@ import json
 import random
 from pathlib import Path
 
-CACHE = Path(__file__).resolve().with_name("ladder_items.json")
+CACHE = Path(__file__).resolve().parent / "question_sets" / "ladder_items.json"
 PER_RUNG = 8
-# Pinned Hugging Face dataset versions (the frozen items are in ladder_items.json)
+# Pinned Hugging Face dataset versions (the frozen items are in question_sets/ladder_items.json)
 REVISIONS = {
     "EleutherAI/hendrycks_math": "21a5633873b6a120296cce3e2df9d5550074f4a3",
     "allenai/ai2_arc": "210d026faf9955653af8916fad021475a3f00453",

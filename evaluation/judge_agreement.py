@@ -7,8 +7,8 @@ as raw agreement and Cohen's kappa. Use it to put every TruthfulQA number on one
 judge, and to show how much a result depends on the choice of judge.
 
 Usage:
-  python -m evaluation.judge_agreement evaluation/results_v4_llama2_only/results_truthfulqa.csv \
-      --judge llama3.1:8b --out evaluation/judge_check/phase1_llama2_rejudged.csv
+  python -m evaluation.judge_agreement evaluation/results/phase1_llama2/results_truthfulqa.csv \
+      --judge llama3.1:8b --out evaluation/results/judge_check/phase1_llama2_rejudged.csv
 """
 
 from __future__ import annotations
