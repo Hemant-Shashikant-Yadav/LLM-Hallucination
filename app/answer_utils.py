@@ -548,6 +548,14 @@ def final_value(text: str | None) -> float | None:
     return float(number) if number is not None else None
 
 
+def _latex_text(text: str) -> str:
+    """LaTeX answer as comparable text: no spacing, sizing, \\text, $ or trailing period."""
+    t = re.sub(r"\\(?:left|right|displaystyle|[!,;: ]|quad)", "", text or "")
+    t = re.sub(r"\\(?:text|mathrm|textbf|mbox)\{([^{}]*)\}", r"\1", t)
+    t = t.replace("\\dfrac", "\\frac").replace("\\tfrac", "\\frac").replace("^\\circ", "")
+    return re.sub(r"[\s$]", "", t).rstrip(".").lower()
+
+
 def answers_equivalent(candidate: str | None, key: str, symbolic: bool = False,
                        rel_tol: float = 5e-3) -> bool:
     """
@@ -559,14 +567,22 @@ def answers_equivalent(candidate: str | None, key: str, symbolic: bool = False,
 
     if candidate is None:
         return False
-    truth = sp.sympify(key)  # trusted: keys come from evaluation/hard_sets.py
+    if _latex_text(final_expression(candidate) or candidate) == _latex_text(key):
+        return True  # written exactly as the key: "p - q", "52_8", "\text{Evelyn}"
+    try:
+        truth = sp.sympify(key)  # trusted: keys come from evaluation/hard_sets.py
+    except (sp.SympifyError, TypeError, SyntaxError):
+        truth = to_sympy(key)  # a LaTeX key from MATH / MATH-500: "\frac{\pi}{2}"
+    if truth is None or not isinstance(truth, sp.Basic):
+        # Tuples, intervals, words ("\left( 3, \frac{\pi}{2} \right)", "\text{Evelyn}")
+        return _latex_text(final_expression(candidate) or candidate) == _latex_text(key)
     got = to_sympy(candidate)
     if got is None:
         value = extract_final_number(candidate)
         got = sp.Float(value) if value is not None else None
     if got is None:
         return False
-    if symbolic or truth.free_symbols:
+    if truth.free_symbols:
         if not got.free_symbols:
             return False
         try:

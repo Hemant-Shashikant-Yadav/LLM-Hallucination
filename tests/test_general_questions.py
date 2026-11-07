@@ -472,3 +472,32 @@ class YesNoTests(unittest.IsolatedAsyncioTestCase):
             SimpleNamespace(responses=[draft, "No.", "Yes."]), key=extract_yes_no,
         )
         self.assertEqual(extract_yes_no(res.answer), "no")
+
+
+class FullSetScoringTests(unittest.TestCase):
+    """MATH keys are LaTeX; JEEBench has multi-correct MCQs."""
+
+    def test_latex_keys(self):
+        from app.answer_utils import answers_equivalent
+
+        bs = chr(92)
+        cases = [(f"{bs}boxed{{3{bs}sqrt{{13}}}}", f"3{bs}sqrt{{13}}", True),
+                 ("The answer is 10.8167", f"3{bs}sqrt{{13}}", True),
+                 (f"{bs}boxed{{p - q}}", "p - q", True),
+                 (f"{bs}boxed{{{bs}left( 3, {bs}frac{{{bs}pi}}{{2}} {bs}right)}}", f"{bs}left( 3, {bs}frac{{{bs}pi}}{{2}} {bs}right)", True),
+                 (f"{bs}boxed{{{bs}text{{Evelyn}}}}", f"{bs}text{{Evelyn}}", True),
+                 (f"{bs}boxed{{-{bs}frac{{1}}{{8}}}}", f"-{bs}frac{{1}}{{8}}", True),
+                 (f"{bs}boxed{{{bs}frac{{1}}{{8}}}}", f"-{bs}frac{{1}}{{8}}", False)]
+        for answer, key, want in cases:
+            with self.subTest(answer=answer, key=key):
+                from app.answer_utils import final_expression
+                self.assertEqual(answers_equivalent(final_expression(answer) or answer, key, symbolic=True), want)
+
+    def test_multi_correct_letters(self):
+        from evaluation.hard_eval import is_correct
+
+        bs = chr(92)
+        row = {"kind": "multi", "key": "abd", "question": ""}
+        self.assertTrue(is_correct(row, f"So {bs}boxed{{ABD}}"))
+        self.assertTrue(is_correct(row, "Final answer: (A), (B) and (D)"))
+        self.assertFalse(is_correct(row, "Final answer: (A) and (B)"))

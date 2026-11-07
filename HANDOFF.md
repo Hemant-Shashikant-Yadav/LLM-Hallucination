@@ -29,7 +29,8 @@ Detailed backlog and evidence: `doc/IMPROVEMENT_ROADMAP.md`.
 | GSM8K dev 500–539 (design run) | 40 | 28 | 35 | 7/0 | 0.016 |
 | Smoke test (16 basic questions) | 16 | | 15 pass | | |
 Test sets: frozen copies with pinned dataset versions and checksums in `data/eval_sets/`
-(`MANIFEST.json`; rebuild with `python -m evaluation.export_eval_sets`).
+(`MANIFEST.json`; rebuild with `python -m evaluation.export_eval_sets`). Full test sets for large runs
+(8,151 questions) in `data/eval_sets/full/`: GSM8K 1,319 · TruthfulQA 817 · MATH 5,000 · MATH-500 · JEEBench 515.
 Phase 1 reference (llama2:7b): TruthfulQA 65% → 83%, the same +18 under two judges.
 Reports: [Results Summary](https://claude.ai/artifact/CpEAGKraVZmCeHi2ge8u8g) ·
 [detailed report](https://claude.ai/artifact/26qLfLwSTTtmWRXzPCbu64).
@@ -73,6 +74,8 @@ Reports: [Results Summary](https://claude.ai/artifact/CpEAGKraVZmCeHi2ge8u8g) ·
    · `python -m evaluation.mcq_10th` · `python -m evaluation.hard_eval collect|score --set hard|ladder --tag <model>`
    · full benchmarks for significance: `--n 1319 --datasets gsm8k` and `--n 817 --datasets truthfulqa`.
    Then update the run names in `evaluation/paper_results.py` and regenerate.
+   Full MATH/JEE: `python -m evaluation.hard_eval collect --set math500|math|jeebench --tag <model>`, then `score`.
+   The pipeline picks one option per MCQ, so JEE multi-correct questions (186) need pipeline support first.
 6. **Improve next** (roadmap §3): a verifier for votes where the right answer lost (12c); curated
    Layer 2 sources plus a stricter edit gate (P2-7); false-premise and fabrication checks
    ("What happened on July 20, 1969?" still fails); a bigger ladder (more questions per rung) for the paper.

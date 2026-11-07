@@ -23,10 +23,20 @@ import httpx
 from app.answer_utils import extract_yes_no
 
 OUT_DIR = Path(__file__).resolve().parent / "hard_results"
-_SET = "hard"  # 'hard' (evaluation/hard_sets.py) or 'ladder' (evaluation/ladder_sets.py)
+_SET = "hard"  # 'hard' (evaluation/hard_sets.py), 'ladder', or a frozen full set below
+# Full test sets frozen in data/eval_sets/full/ (python -m evaluation.export_eval_sets --full)
+FULL_SETS = {"math500": "math500", "math": "math_test", "jeebench": "jeebench"}
 
 
 def _sets() -> dict[str, list]:
+    if _SET in FULL_SETS:
+        path = Path(__file__).resolve().parent.parent / "data" / "eval_sets" / "full" / f"{FULL_SETS[_SET]}.jsonl"
+        sets: dict[str, list] = {}
+        for line in path.read_text(encoding="utf-8").splitlines():
+            r = json.loads(line)
+            category = f"{r['subject']} {r['type']}" if _SET == "jeebench" else r["subject"]
+            sets.setdefault(category, []).append((r["id"], r["question"], r["kind"], r["key"]))
+        return sets
     if _SET == "ladder":
         from evaluation.ladder_sets import load
         return load()
@@ -121,12 +131,33 @@ async def _judge_yes_no(pairs: list[tuple[str, str]]) -> dict[str, str]:
     return cache
 
 
+def _picked_letters(text: str) -> set[str]:
+    r"""Letters a multi-correct answer picks: '\boxed{ABD}', 'Final answer: (A), (B) and (D)'."""
+    import re
+
+    from app.answer_utils import final_expression
+
+    if "\\boxed{" in text:
+        seg = final_expression(text) or ""  # last box, nested braces included
+    else:
+        marks = list(re.finditer(r"(?:correct (?:answers?|options?)|answer)\s*(?:is|are|:)", text, re.I))
+        seg = text[marks[-1].end():][:120] if marks else ""
+    seg = re.sub(r"\\text\{([^{}]*)\}", r"\1", seg)
+    letters = re.findall(r"\(([A-Da-d])\)", seg)          # (A), (B) and (D)
+    if not letters:
+        run = re.search(r"(?<![A-Za-z])([A-D]{2,4})(?![A-Za-z])", seg)  # ABD
+        letters = list(run.group(1)) if run else re.findall(r"(?<![A-Za-z])([A-D])(?![A-Za-z])", seg)
+    return {m.lower() for m in letters}
+
+
 def is_correct(row: dict, text: str, judged: dict[str, str] | None = None) -> bool:
     from app.answer_utils import answers_equivalent, extract_choice, final_expression, parse_options
 
     kind, key = row["kind"], row["key"]
     if kind == "choice":
         return extract_choice(text, parse_options(row["question"])) == key
+    if kind == "multi":  # JEE multi-correct: exactly the key's set of letters
+        return _picked_letters(text) == set(key)
     if kind == "yesno":
         verdict = _explicit_yes_no(text) or (judged or {}).get(f"{row['question']}\n---\n{text}")
         return verdict == key
@@ -172,7 +203,7 @@ def main() -> None:
     ap.add_argument("--tag", default="before")
     ap.add_argument("--tags", nargs="+", default=["before", "after"])
     ap.add_argument("--api-base", default="http://127.0.0.1:8000")
-    ap.add_argument("--set", default="hard", choices=["hard", "ladder"])
+    ap.add_argument("--set", default="hard", choices=["hard", "ladder", *FULL_SETS])
     ap.add_argument("--only", nargs="+", help="collect only these categories, e.g. 'MATH L5'")
     args = ap.parse_args()
     global _SET
