@@ -1,0 +1,9 @@
+# Dry runs with the simulated model (python -m uncertainty run-all --backend fake)
+results_fake/
+# Generation files still being written; finished sets are gzipped
+*.partial.jsonl
+# Report caches (rebuilt from scores.csv)
+obj1_cache.pkl
+# Local settings
+uq.env
+__pycache__/
