@@ -3,10 +3,14 @@ Phase 1 deck (thesis objectives 1-2) built on the college template.
 
 Keeps the template's title, Introduction and Problem Statement slides as written, edits Contents
 and Objectives, and adds every other slide with the template's own chrome (blue bar, title,
-subtitle, rule, footer) copied from its content slides. Numbers on result slides are real: they
-come from the pipeline's stored test runs (see RESULTS below); nothing is invented.
+subtitle, rule, footer) copied from its content slides.
 
-Usage: python build.py <template.pptx> <output.pptx>
+Result slides: until the full study has run on the Mac, the per-model tables and the
+across-model chart show PLACEHOLDER values (made up by _placeholder() below and labelled as such
+on every slide). Four cells reuse real numbers from the pipeline's stored test runs (RESULTS).
+After the Mac run, put the real numbers in PH and set PLACEHOLDER = False.
+
+Usage: python build_phase1_deck.py <template.pptx> <output.pptx>
 """
 import copy
 import sys
@@ -38,6 +42,43 @@ RESULTS = [  # model, dataset, accuracy, AUROC, CI low, CI high, mean H right, m
     ("llama2:7b", "GSM8K (maths)", 0.24, 0.79, 0.69, 0.87, 0.36, 0.66),
     ("llama2:7b", "TruthfulQA (myths)", 0.61, 0.58, 0.48, 0.69, 0.72, 0.81),
 ]
+
+# Placeholder values for the full-study result slides: illustrative only, never measured. They come
+# from the formula in _placeholder() and are replaced by uncertainty/results/ after the Mac run.
+PLACEHOLDER = True
+MODELS = [  # roster model, family, a made-up 'strength' (0-1) that drives the placeholders
+    ("qwen2.5:3b", "qwen", .50), ("qwen2.5:7b", "qwen", .66), ("qwen2.5:14b", "qwen", .78),
+    ("qwen3:4b", "qwen", .62), ("llama3.2:3b", "llama", .40), ("llama3.1:8b", "llama", .60),
+    ("llama2:7b", "llama", .22), ("gemma3:4b", "gemma", .52), ("gemma3:12b", "gemma", .74),
+    ("phi4-mini", "phi", .48), ("phi4", "phi", .80), ("mistral:7b", "mistral", .42)]
+DATASETS = {  # accuracy at strength 0 and at 1, base AUROC, base blind spot
+    "TriviaQA": (.42, .82, .78, .22), "PopQA": (.10, .40, .74, .30), "HaluEval": (.30, .66, .70, .26),
+    "TruthfulQA": (.40, .74, .57, .10), "GSM8K": (.18, .95, .84, .12), "MATH": (.05, .62, .80, .15),
+    "StrategyQA": (.55, .80, .66, .34), "ARC": (.55, .93, .76, .30), "AmbigQA": (.20, .48, .62, .24),
+    "SelfAware": (.25, .55, .64, .38), "FreshQA": (.15, .45, .66, .34)}
+GROUPS = [("Facts and myths", ["TriviaQA", "PopQA", "HaluEval", "TruthfulQA"]),
+          ("Reasoning", ["GSM8K", "MATH", "StrategyQA", "ARC"]),
+          ("Unclear and changing questions", ["AmbigQA", "SelfAware", "FreshQA"])]
+
+
+def _placeholder():
+    """(model, dataset) -> [accuracy, semantic-entropy AUROC, blind spot]; deterministic."""
+    import random
+    out = {}
+    for model, family, s in MODELS:
+        for d, (lo, hi, auc, blind) in DATASETS.items():
+            r = random.Random(f"{model}|{d}")
+            bonus = .18 if family in ("qwen", "phi") and d in ("GSM8K", "MATH") else 0
+            acc = min(.97, max(.03, lo + (hi - lo) * s + bonus + r.uniform(-.04, .04)))
+            au = min(.95, max(.50, auc + .08 * (s - .5) + r.uniform(-.03, .03)))
+            bs = min(.60, max(.02, blind + .08 * (s - .5) + r.uniform(-.04, .04)))
+            out[model, d] = [acc, au, bs]
+    for m, d, acc, au, *_ in RESULTS:  # the four real cells (accuracy and AUROC only)
+        out[m, d.split(" ")[0]][:2] = [acc, au]
+    return out
+
+
+PH = _placeholder()
 
 IN = 914400
 E = lambda v: Emu(int(round(v * IN)))
@@ -162,6 +203,15 @@ def tag(slide, x, y, label, w=1.45):
     box(slide, x, y, w, 0.24, fill=TINT, paras=label, size=8, color=INDIGO, bold=True, margin=0.08, radius=0.2)
 
 
+def placeholder_note(slide, y, note):
+    """The amber 'placeholder values' tag and a source line; only the source line once results are real."""
+    if PLACEHOLDER:
+        box(slide, 0.6, y, 1.7, 0.26, fill=T_AMBER, paras="PLACEHOLDER VALUES", size=8, bold=True, color="92400E",
+            margin=0.08, radius=0.2, align=PP_ALIGN.CENTER)
+        note = "Illustrative numbers until the full run on the Mac replaces them. " + note
+    text(slide, 2.45 if PLACEHOLDER else 0.6, y + 0.02, 6.95, 0.42, note, size=9, italic=True, color=SLATE)
+
+
 def table(slide, x, y, w, col_w, rows, row_h=0.36, size=10.5, header_fill=BLUE, fills=None, bold_first_col=False,
           aligns=None):
     """rows[0] is the header. fills: per-cell override {(r, c): hex}."""
@@ -194,7 +244,7 @@ def table(slide, x, y, w, col_w, rows, row_h=0.36, size=10.5, header_fill=BLUE, 
 
 
 def column_chart(slide, x, y, w, h, categories, series, colors, title, vmax=1.0, unit=0.25, fmt="0.00",
-                 legend=True):
+                 legend=True, labels=True, cat_size=10):
     cd = CategoryChartData()
     cd.categories = categories
     for name, values in series:
@@ -222,16 +272,17 @@ def column_chart(slide, x, y, w, h, categories, series, colors, title, vmax=1.0,
     va.tick_labels.font.color.rgb = rgb(SLATE)
     va.tick_labels.number_format, va.tick_labels.number_format_is_linked = fmt, False
     ca = ch.category_axis
-    ca.tick_labels.font.size = Pt(10)
+    ca.tick_labels.font.size = Pt(cat_size)
     ca.format.line.color.rgb = rgb(RULE)
     plot = ch.plots[0]
     plot.gap_width, plot.overlap = 70, -8
-    plot.has_data_labels = True
-    dl = plot.data_labels
-    dl.number_format, dl.number_format_is_linked = fmt, False
-    dl.position = XL_LABEL_POSITION.OUTSIDE_END
-    dl.font.size = Pt(10)
-    dl.font.bold = True
+    plot.has_data_labels = labels
+    if labels:
+        dl = plot.data_labels
+        dl.number_format, dl.number_format_is_linked = fmt, False
+        dl.position = XL_LABEL_POSITION.OUTSIDE_END
+        dl.font.size = Pt(10)
+        dl.font.bold = True
     for s, col in zip(plot.series, colors):
         s.format.fill.solid()
         s.format.fill.fore_color.rgb = rgb(col)
@@ -289,8 +340,8 @@ s = new_slide("Contents", "Presentation roadmap")
 items = ["Introduction, problem statement and literature review",
          "Research gap, objectives and the Phase 1 plan",
          "Methodology: how uncertainty is measured and classified",
-         "Phase 1 execution: implemented system and audit",
-         "Evaluation setup and early results",
+         "Phase 1 execution: plan vs result, implemented system",
+         "Evaluation setup and results for every model",
          "Discussion, Phase 2 plan and references"]
 for i, it in enumerate(items):
     yy = 1.12 + i * 0.6
@@ -596,31 +647,7 @@ notes(s, "The system has seven parts, from building the question sets to a singl
          "standard Python libraries for statistics. All 45 automatic tests pass.")
 ORDER.append(s)
 
-# 16. Audit
-s = new_slide("Phase 1 Audit: Issues Found and Fixed", "Code review and test runs before the final evaluation")
-rows = [["Issue found", "Fix", "Effect"],
-        ["One failed judge verdict in a small batch stopped a whole model", "Warn above 2% failures; stop only above 20%",
-         "No model's finished work is thrown away"],
-        ["Test runs took the first questions only; FreshQA lists all false premises first",
-         "Pick questions spread through each set", "Every type of doubt appears in test runs"],
-        ["Each report rebuild redid all earlier models", "Cache each model's tables; faster F1 statistics",
-         "Rebuild time no longer grows; 22 s → 10 s"],
-        ["Wikipedia blocked the dataset build (robot policy)", "20 titles per request, with contact details",
-         "300 requests → 15; 25 min → 30 s"],
-        ["Two builds overwrote each other's dataset list", "Merge the list at the end of a build",
-         "All 11 sets listed; rebuild is byte-identical"],
-        ["Earlier pipeline: cut-off answers and misread numbers caused wrong votes",
-         "Drop cut-off samples; reuse the tested reader", "A gate checks that ≥ 90% are readable"]]
-table(s, 0.5, 1.02, 8.95, [3.45, 2.85, 2.65], rows, row_h=0.47, size=9.5)
-box(s, 0.72, 4.42, 8.5, 0.62, fill=TINT, line=TINT_LINE, margin=0.2,
-    paras=[[("After the fixes: ", {"bold": True}), ("a full 12-model test run finished, and after a simulated crash only 5 missing "
-            "questions were redone.", {})]], size=11, color=NAVY)
-notes(s, "Testing found six real problems. The most important: a single failed verdict could stop a whole model, test "
-         "runs missed some question types, and reports slowed down as models were added. Each was fixed and checked. "
-         "The last row is a lesson from the earlier pipeline that we built in from the start.")
-ORDER.append(s)
-
-# 17. Evaluation setup
+# 16. Evaluation setup
 s = new_slide("Evaluation Setup", "Datasets, configurations, metrics and statistics")
 tag(s, 0.55, 1.0, "DATASETS")
 table(s, 0.55, 1.3, 4.3, [1.75, 1.85, 0.7], [["Doubt probed", "Datasets", "Qs"],
@@ -647,48 +674,57 @@ notes(s, "We use eleven public datasets, chosen so every kind of doubt appears. 
          "chance that a wrong answer gets a higher uncertainty than a right one. Differences are tested statistically.")
 ORDER.append(s)
 
-# 18. Results: early real data
-s = new_slide("Results: Early Uncertainty Results (Real Data)",
-              "Semantic entropy on two models' stored test runs, 100 questions per dataset")
-rows = [["Model", "Dataset", "Accuracy", "AUROC (CI)"]] + [
-    [m, d.split(" ")[0], f"{acc:.0%}", f"{a:.2f} ({lo:.2f}–{hi:.2f})"] for m, d, acc, a, lo, hi, _, _ in RESULTS]
-table(s, 0.55, 1.05, 4.6, [1.15, 1.05, 0.95, 1.45], rows, row_h=0.4, size=10.5,
-      aligns=[PP_ALIGN.LEFT, PP_ALIGN.LEFT, PP_ALIGN.RIGHT, PP_ALIGN.RIGHT])
-bullets(s, 0.55, 3.25, 4.6, ["AUROC 0.5 = guessing, 1.0 = perfect.",
-                             "Maths: a strong signal for both models (0.86 and 0.79).",
-                             "Myth questions: close to guessing (0.55 and 0.58)."], size=11.5, step=0.42, h=0.36)
-column_chart(s, 5.35, 0.98, 4.1, 3.55, ["GSM8K (maths)", "TruthfulQA (myths)"],
-             [("qwen2.5:3b", (0.86, 0.55)), ("llama2:7b", (0.79, 0.58))], [INDIGO, AMBER],
-             "How well entropy spots errors (AUROC)")
-text(s, 0.55, 4.65, 8.85, 0.4, "Source: stored pipeline test runs (Layer 1: 4 samples, temperature 0.7). "
-     "CI = 95% bootstrap interval. Full Phase 1 runs use 10 samples.", size=9, italic=True, color=SLATE)
-notes(s, "These are real numbers from runs we already have. AUROC tells how well entropy separates wrong from right "
-         "answers: 0.5 is guessing, 1 is perfect. On maths it works well for both models. On TruthfulQA, which asks "
-         "about common myths, it is close to guessing.")
+# 17-19. Results: one table per group of datasets, one row per model
+REAL_NOTE = {"Facts and myths": " Real: qwen2.5:3b and llama2:7b accuracy and AUROC on TruthfulQA (earlier stored runs).",
+             "Reasoning": " Real: qwen2.5:3b and llama2:7b accuracy and AUROC on GSM8K (earlier stored runs)."}
+GROUP_NOTES = {
+    "Facts and myths": "Each row is one model; each cell lists the values in the order of the datasets column. Fact "
+                       "questions show a useful AUROC, well above 0.5. TruthfulQA, the myth questions, stays close to "
+                       "0.5 for every model: entropy cannot separate right from wrong there.",
+    "Reasoning": "Maths and reasoning give the clearest signal: when the model is wrong, its ten answers scatter, so "
+                 "AUROC is high. Accuracy grows with model size inside each family.",
+    "Unclear and changing questions": "These sets hold ambiguous, unanswerable and time-dependent questions. The "
+                                      "blind spot is largest here: models often give the same wrong answer every "
+                                      "time, so sampling alone misses it. This is why Objective 2 classifies the type."}
+for k, (group, sets) in enumerate(GROUPS, start=1):
+    s = new_slide(f"Results: Baseline Uncertainty per Model ({k}/3)",
+                  f"{group}: accuracy, semantic-entropy AUROC and blind spot for every model")
+    names = ", ".join(sets)
+    rows = [["Model", "Datasets", "Accuracy", "AUROC (semantic entropy)", "Blind spot"]]
+    for model, _, _ in MODELS:
+        v = [PH[model, d] for d in sets]
+        rows.append([model, names, ", ".join(f"{x[0]:.0%}" for x in v), ", ".join(f"{x[1]:.2f}" for x in v),
+                     ", ".join(f"{x[2]:.0%}" for x in v)])
+    table(s, 0.6, 1.0, 8.8, [1.3, 2.6, 1.55, 1.85, 1.5], rows, row_h=0.27, size=8.5, bold_first_col=True)
+    placeholder_note(s, 4.66, "Each cell lists values in the order of the Datasets column. AUROC: 0.5 = guessing, "
+                              "1 = perfect. Blind spot: share of errors made while sure." + REAL_NOTE.get(group, ""))
+    notes(s, GROUP_NOTES[group] + (" These values are placeholders until the full run." if PLACEHOLDER else ""))
+    ORDER.append(s)
+
+# 20. Results: maths vs myths across every model
+s = new_slide("Results: Maths vs Myths Across Models", "Semantic-entropy AUROC on GSM8K (maths) and TruthfulQA (myths)")
+cats = [m for m, _, _ in MODELS]
+maths = [PH[m, "GSM8K"][1] for m in cats]
+myths = [PH[m, "TruthfulQA"][1] for m in cats]
+column_chart(s, 0.5, 0.95, 8.95, 2.85, cats, [("GSM8K (maths)", tuple(round(v, 2) for v in maths)),
+                                              ("TruthfulQA (myths)", tuple(round(v, 2) for v in myths))],
+             [INDIGO, AMBER], "How well entropy spots errors (AUROC; 0.5 = guessing)", labels=False, cat_size=8.5)
+better = sum(a > b for a, b in zip(maths, myths))
+kpis = [(f"{sum(maths) / len(maths):.2f}", "average AUROC on maths: a strong signal"),
+        (f"{sum(myths) / len(myths):.2f}", "average AUROC on myths: close to guessing"),
+        (f"{better} of {len(cats)}", "models where entropy works better on maths")]
+for i, (num, lab) in enumerate(kpis):
+    box(s, 0.6 + i * 2.95, 3.9, 2.8, 0.66, fill=TINT, anchor=MSO_ANCHOR.MIDDLE, margin=0.15,
+        paras=[[(num + "  ", {"size": 17, "bold": True, "color": BLUE}), (lab, {"size": 9.5, "color": INK})]])
+placeholder_note(s, 4.66, "qwen2.5:3b and llama2:7b bars are real (earlier stored runs).")
+notes(s, "This compares maths and myth questions for every model. On maths, wrong answers scatter across the ten "
+         "samples, so entropy spots them. On myth questions, right and wrong answers look equally unsure, so entropy "
+         "is close to guessing. This is why Objective 2 looks at the kind of doubt, not only its size."
+         + (" Values are placeholders until the full run; the qwen2.5:3b and llama2:7b bars are real." if PLACEHOLDER
+            else ""))
 ORDER.append(s)
 
-# 19. Results: comparison
-s = new_slide("Results: Maths vs Myths Comparison", "Average entropy of right and wrong answers")
-cats = ["qwen · GSM8K", "qwen · TruthfulQA", "llama2 · GSM8K", "llama2 · TruthfulQA"]
-column_chart(s, 0.5, 0.98, 5.55, 3.3, cats, [("Right answers", tuple(r[6] for r in RESULTS)),
-                                             ("Wrong answers", tuple(r[7] for r in RESULTS))],
-             [TEAL, ROSE], "Average entropy H (0 = all answers agree)")
-for i, (num, lab) in enumerate([("97%", "of qwen2.5:3b maths answers given while sure were right"),
-                                ("2 of 16", "maths errors were made while sure: the blind spot"),
-                                ("2%", "of myth answers looked sure: almost all look unsure")]):
-    y = 1.05 + i * 1.07
-    box(s, 6.3, y, 3.1, 0.95, fill=TINT, anchor=MSO_ANCHOR.MIDDLE, margin=0.15,
-        paras=[[(num, {"size": 20, "bold": True, "color": BLUE})], [(lab, {"size": 10, "color": INK})]])
-box(s, 0.72, 4.38, 8.5, 0.68, fill=TINT, line=TINT_LINE, margin=0.2,
-    paras=[[("Result: ", {"bold": True}), ("on maths, wrong answers are clearly more unsure than right ones. On myth "
-            "questions, right and wrong answers look equally unsure, so entropy alone cannot separate them.", {})]],
-    size=11, color=NAVY)
-notes(s, "Here we compare the average entropy of right and wrong answers. On maths the gap is large, so entropy is "
-         "useful. On myth questions both are high, so entropy cannot tell them apart. 'Sure' here means all sampled "
-         "answers agreed. This is why Objective 2 looks at the kind of doubt, not just its size.")
-ORDER.append(s)
-
-# 20. Results: readiness and pending outputs
+# 21. Results: readiness and pending outputs
 s = new_slide("Results: Readiness of the Full Study", "Checks on the code (not model results) and what the full run adds")
 tag(s, 0.55, 1.0, "VERIFIED NOW", w=1.6)
 checks = [("45", "automatic tests pass"), ("6 / 6", "run stages finished in a 12-model test run"),
@@ -707,25 +743,25 @@ rows = [["Output", "Objective", "Status"],
         ["Agreement with ~300 human labels (κ)", "2", "Pending"]]
 table(s, 4.45, 1.32, 4.95, [3.1, 0.85, 1.0], rows, row_h=0.42, size=10,
       fills={(r, 2): T_AMBER for r in range(1, 7)}, aligns=[PP_ALIGN.LEFT, PP_ALIGN.CENTER, PP_ALIGN.CENTER])
-notes(s, "We do not show invented numbers. The left side shows what is already verified about the code, using a "
+notes(s, "The left side shows what is already verified about the code, using a "
          "simulated model. The right side lists the results the full run will produce; they will replace this slide.")
 ORDER.append(s)
 
-# 21. Discussion and limitations
+# 22. Discussion and limitations
 s = new_slide("Discussion and Limitations", "How to read the Phase 1 results")
 bullets(s, 0.75, 1.1, 8.6, [
-    "Early results come from 2 models and 2 datasets (100 questions each) with the pipeline's 4-sample setting.",
+    "Result tables show placeholder values; only qwen2.5:3b and llama2:7b on GSM8K and TruthfulQA are real so far.",
     "Entropy works when answers are short and checkable (maths); on open questions it is high for right and wrong alike.",
     "Some errors are made while the model is sure (blind spot); sampling cannot see them, so self-checks are also tested.",
     "A judge model marks free-text answers; a second judge and 100 human checks test it.",
     "Type labels come from re-asking; about 300 human labels check them.",
     "Only small open models (3B–14B) are tested; larger models may behave differently."], size=12.5, h=0.55, gap=0.26)
-notes(s, "A few cautions. The early numbers are small and use the pipeline's lighter settings. Entropy is weak on "
+notes(s, "A few cautions. The result tables are placeholders until the full run; the few real numbers are small. Entropy is weak on "
          "open-ended questions. Some confident errors cannot be caught by sampling. Judges and our type labels are "
          "checked against humans. And we only test small open models.")
 ORDER.append(s)
 
-# 22. Phase 2 plan
+# 23. Phase 2 plan
 s = new_slide("Phase 2 Plan: Reduce Uncertainty and Compare", "Implementation sequence planned for Phase 2")
 p2 = [("Route by type", "use the Phase 1 type to pick the fix for each unsure answer"),
       ("Evidence-based verification", "check factual claims against retrieved passages (Objective 3)"),
@@ -745,7 +781,7 @@ notes(s, "Phase 2 uses what Phase 1 learns. Each unsure answer gets the fix that
          "already helps on maths, but not yet on myth questions, which is exactly where Phase 1's types should help.")
 ORDER.append(s)
 
-# 23. References
+# 24. References
 s = new_slide("References", "Main sources")
 refs = ["S. Farquhar, J. Kossen, L. Kuhn, Y. Gal. Detecting hallucinations in large language models using semantic entropy. Nature, 2024.",
         "L. Kuhn, Y. Gal, S. Farquhar. Semantic uncertainty: linguistic invariances for uncertainty estimation in NLG. ICLR, 2023.",
