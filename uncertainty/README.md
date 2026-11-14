@@ -13,6 +13,9 @@ Thesis objectives 1 and 2, separate from the hallucination-mitigation pipeline (
 **Running it on the Mac:** [HANDOFF.md](HANDOFF.md) is a ready-to-use prompt covering setup,
 the run, troubleshooting, the write-up and a results deck of at most 10 slides.
 
+**A quicker run on Google Colab:** [colab/README.md](colab/README.md) and its notebook run all 12 models
+on all 11 datasets with fewer questions per dataset (20 by default, about 10 hours on a free T4 GPU).
+
 The design and its reasons are in [PLAN.md](PLAN.md). Nothing here changes the pipeline,
 and the pipeline reads nothing from here. Read-only imports: `app.answer_utils` (answer
 reading) and `evaluation.truthfulqa_judge` (the TruthfulQA judge prompt and ROUGE-L).

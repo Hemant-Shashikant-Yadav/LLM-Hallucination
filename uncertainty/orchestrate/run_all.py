@@ -114,6 +114,12 @@ class Run:
     async def stage_check(self) -> None:
         mem = self.cfg.memory_gb or (24.0 if self.cfg.backend == "fake" else system.memory_gb())
         roster = self.cfg.models or [s.tag for s in pick_roster(mem)]
+        if not roster:
+            # e.g. Colab: /proc/meminfo reports ~13 GB of system RAM, below every roster model's need,
+            # although the GPU has room. Stop with the fix rather than run an empty study.
+            raise system.RunStop(f"No roster model fits {mem:.0f} GB of memory. On a GPU machine (Colab), name "
+                                 "the models with --models and the judges' memory class with --memory-gb; see "
+                                 "uncertainty/colab/README.md.")
         pipeline_model = self.cfg.pipeline_model
         if pipeline_model and pipeline_model not in roster:
             roster.append(pipeline_model)

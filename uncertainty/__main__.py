@@ -53,7 +53,8 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--max-hours", type=float)
     r.add_argument("--until")
     r.add_argument("--only")
-    r.add_argument("--limit", type=int, help="first n questions per set (dry runs)")
+    r.add_argument("--limit", type=int, help="n questions per set, spread evenly through each set (dry runs and "
+                                             "quick runs; with --tier-others extended every model gets the same n)")
     r.add_argument("--memory-gb", type=float)
     r.add_argument("--real-nli", action="store_true", help="fake backend: use the real DeBERTa NLI model")
     r.add_argument("--skip-tests", action="store_true")

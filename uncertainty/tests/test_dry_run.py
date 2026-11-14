@@ -37,6 +37,20 @@ def tearDownModule():
         shutil.rmtree(_RUN["dir"], ignore_errors=True)
 
 
+class EmptyRosterTest(unittest.TestCase):
+    def test_too_little_memory_stops_with_the_fix(self):
+        """Colab reports ~13 GB of system RAM: no roster model fits, so the run must stop, not run nothing."""
+        from uncertainty.orchestrate.system import RunStop
+
+        tmp = Path(tempfile.mkdtemp(prefix="uq_empty_"))
+        try:
+            with self.assertRaises(RunStop) as ctx:
+                run_all(RunConfig(backend="fake", results_dir=tmp, memory_gb=12.7, limit=2, skip_tests=True))
+            self.assertIn("--models", str(ctx.exception))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 class DryRunTest(unittest.TestCase):
     def test_every_stage_and_report(self):
         d = shared_run()
