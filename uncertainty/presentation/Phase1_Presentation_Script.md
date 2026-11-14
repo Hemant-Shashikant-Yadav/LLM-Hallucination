@@ -1,14 +1,15 @@
 # Phase 1 Presentation: Narration Script and Formula Guide
 
-Companion to [Phase1_Uncertainty_Study.pptx](Phase1_Uncertainty_Study.pptx) (24 slides). It has three parts:
+Companion to [Phase1_Uncertainty_Study.pptx](Phase1_Uncertainty_Study.pptx) (20 slides). It has four parts:
 
 - **Part A: slide-by-slide script.** What is on each slide, what to say, and short answers to likely panel questions.
 - **Part B: formulas and methods in detail.** Every formula behind the slides, explained in plain words with a small worked example, and matched to the code in `uncertainty/`.
 - **Part C: quick glossary.** One line per term, for when you get stuck.
+- **Part D: where the expected values come from.** Every published number behind the result slides, with links.
 
-> **About the result numbers.** Slides 17–20 show **placeholder values** and are marked "PLACEHOLDER VALUES" on the slide. They show what the final tables will look like. The full run on the Mac will replace them. Four cells are real, from earlier stored runs: the accuracy and AUROC of qwen2.5:3b and llama2:7b on GSM8K and TruthfulQA. Always say "placeholder" when you show those slides. Never present the placeholder numbers as findings.
+> **About the result numbers.** Slides 14–17 show **expected values**, marked "EXPECTED VALUES" on the slide. They are not measured in this study yet. Accuracy comes from published benchmark scores where a model card or paper reports one, and is estimated from those otherwise. AUROC comes from published semantic-entropy results. Four cells are real, from earlier stored runs: the accuracy and AUROC of qwen2.5:3b and llama2:7b on GSM8K and TruthfulQA. When you show those slides, say "expected, from published results", never "we measured". Part D lists the sources, so you can answer "where do these numbers come from?".
 
-**Timing.** About 20–25 minutes in total. Give the methodology slides (9–13) and the results slides (17–20) the most time. Give the title, contents and references slides the least.
+**Timing.** About 20–25 minutes in total. Give the methodology slides (8–11) and the results slides (14–17) the most time. Give the title, contents and references slides the least.
 
 ---
 
@@ -90,40 +91,33 @@ In short, most work gives one uncertainty number, on a few models, and does not 
 
 ---
 
-### Slide 8: Phase 1 Plan (≈ 1 min)
+### Slide 8: Phase 1 Plan and Architecture (≈ 2 min)
+
+**On the slide:** the architecture diagram. The numbers 1–8 on it are the eight steps of the Phase 1 plan.
 
 **Say:**
-"Phase 1 has eight steps.
+"This slide shows the Phase 1 plan and the architecture in one picture. The numbers are the eight steps.
 
-1. We freeze the questions: 11 public datasets, 3,367 questions, with fixed versions so anyone can repeat the study.
-2. We choose models from 5 families, from 3 to 14 billion parameters.
-3. Each question gets one normal answer, 10 sampled answers and a few self-check questions.
-4. Each answer is marked right or wrong: by rules for maths, and by a judge model from a different family for free text.
-5. We score uncertainty with 17 published methods. That is Objective 1.
-6. We label the type of doubt by re-asking with evidence or with a method hint.
-7. We train the classifier and compare it with the current routing rule. Steps 6 and 7 are Objective 2.
-8. Everything runs with one command on a Mac and produces the tables and figures."
+1. **Question sets.** We freeze 11 public datasets, 3,367 questions, with fixed versions so anyone can repeat the study.
+2. **LLMs under test.** We use 9 to 12 open models from 5 families, from 3 to 14 billion parameters.
+3. **Generate.** Each question gets one normal answer, called the **greedy** answer, at temperature 0. It also gets ten **sampled** answers at temperature 1, plus a few self-checks.
+4. **Mark right or wrong.** Rules mark the maths answers. A judge model from a *different* family marks free text, so a model never grades itself.
 
----
+Everything is **stored once**, and every method reads the same stored answers. That makes the comparison fair, and adding a method later needs no new model runs.
 
-### Slide 9: Methodology: Generate Once, Score Many (≈ 1.5 min)
-
-**On the slide:** the architecture diagram.
-
-**Say:**
-"This is the architecture. On the top row, a question goes to the model under test. The model gives one normal answer, called the **greedy** answer, at temperature 0. It also gives ten **sampled** answers at temperature 1 and rates its own answer. A judge, or a rule, marks the greedy answer right or wrong.
-
-Everything is **stored once**. Both objectives are then computed from the same stored answers. On the left, Objective 1 runs the 17 methods and measures how well each one predicts mistakes. That gives a baseline profile per model and dataset. On the right, Objective 2 re-asks unsure answers to get labels, trains a detector and a type classifier, and recommends an action.
-
-Because every method reads the same answers, the comparison is fair. Adding a new method later does not need new model runs."
+5. On the left, **Objective 1** scores uncertainty with 17 methods. It measures how well each one predicts mistakes, and builds a baseline profile per model and dataset.
+6. On the right, **Objective 2** first re-asks the unsure answers to get labels.
+7. It then trains a detector and a type classifier, and compares them with the pipeline's current routing rule.
+8. **Run and report.** One command runs every step, resumes after a crash, and writes the tables and figures."
 
 **If asked:**
 - *Why temperature 1 for samples?* That is the setting in the semantic-entropy papers. It shows the model's real spread of answers. The greedy answer at temperature 0 is the one we grade.
-- *Why ten samples?* The Nature paper uses ten. We also measure how AUROC changes with 2 to 10 samples, so we can tell whether fewer samples are enough. The pipeline uses 4.
+- *Why ten samples?* The Nature paper uses ten. We also measure how AUROC changes with 2 to 10 samples, so we can tell whether fewer are enough. The pipeline uses 4.
+- *How many calls per question?* 18 per model: 1 greedy answer, 10 samples, 2 confidence questions and 5 yes/no self-checks.
 
 ---
 
-### Slide 10: Methodology: Semantic Entropy (≈ 2 min)
+### Slide 9: Methodology: Semantic Entropy (≈ 2 min)
 
 **On the slide:** the Canberra/Sydney example, the formula, and four bullets.
 
@@ -142,7 +136,7 @@ If all ten agree, H is 0 and the model is sure. If the answers scatter over many
 
 ---
 
-### Slide 11: Methodology: Seventeen Methods (≈ 1.5 min)
+### Slide 10: Methodology: Seventeen Methods (≈ 1.5 min)
 
 **Say:**
 "We do not test semantic entropy alone. It is compared with 16 other published methods, in four families.
@@ -152,68 +146,53 @@ If all ten agree, H is 0 and the model is sure. If the answers scatter over many
 - **Surface, 1 method.** Plain word overlap between the answers, using ROUGE-L.
 - **Self-evaluation, 2 methods.** The model judges itself: P(True), and a confidence it states from 0 to 100.
 
-All 17 are computed from the same stored answers. Part B of my notes has each formula."
+All 17 run on every answer of every model and are computed from the same stored answers. Each gives one score per question, and we compare them by how well those scores separate wrong answers from right ones."
 
 **If asked:**
 - *Which one is best?* The full run will tell. Literature suggests meaning-level methods do best on short factual answers, and token methods are cheap but noisy.
+- *Is a method chosen per model or per question type?* No. All 17 run everywhere. The results are reported per model and per dataset, so we can see which method works best where.
 
 ---
 
-### Slide 12: Methodology: Types of Uncertainty (≈ 1.5 min)
+### Slide 11: Methodology: Classifying Uncertainty (≈ 2 min)
+
+**On the slide:** two blue bars (Identify, Classify), the re-ask diagram on the left, the type → fix table and the classifier box on the right.
 
 **Say:**
-"Objective 2 answers two questions about an answer.
+"Objective 2 asks two questions about an answer.
 
-First, **identify**: how likely is it wrong? We combine the 17 signals into one calibrated probability of hallucination and report it as low, medium or high.
+**Identify**: how likely is it to be wrong? We combine the 17 signals into one calibrated probability of hallucination and report it as low, medium or high.
 
-Second, **classify**: what kind of doubt is it? There are four types, and each has a fix:
-- **Knowledge.** The answers disagree on names, dates or facts. The fix is to look up evidence.
-- **Reasoning.** The facts are the same but the conclusions differ. The fix is careful step-by-step reasoning.
-- **Aleatoric.** The question itself is the problem: it is unclear, unanswerable or based on a false premise. The fix is to ask for clarification, refuse, or correct the premise.
-- **Temporal.** The true answer changes over time. The fix is to search for fresh information."
+**Classify**: what kind of doubt is it? The table on the right lists the four types and what fixes each:
+- **Knowledge.** The model lacks or misremembers a fact, so we look up evidence.
+- **Reasoning.** The facts are the same but the conclusions differ, so we use careful step-by-step reasoning.
+- **Aleatoric.** The question itself is unclear, unanswerable or based on a false premise, so we ask for clarification, refuse, or correct the premise.
+- **Temporal.** The true answer changes over time, so we search for fresh information.
+
+To train a classifier we need labelled examples. The diagram shows how we get them: **the type is whichever re-ask removes the doubt.** For each unsure or wrong answer we ask the same model again, five times with the **true evidence** and five times with a **method hint**. The hint is the first half of a worked solution and never gives the answer. If the evidence fixes it, the model lacked knowledge. If the hint fixes it, the reasoning was the problem. 'Fixed' means the majority answer becomes correct *and* the five answers agree.
+
+Ambiguous, unanswerable and time-dependent questions get their type from their datasets. About 300 answers are also labelled by hand and checked with Cohen's kappa.
+
+Finally, the classifier learns the type from the 17 signals, how the answers group, and 5 yes/no self-checks. It must beat the pipeline's current routing rule, meaning the 95% confidence interval of the improvement is above zero."
 
 **If asked:**
 - *What does aleatoric mean?* It is uncertainty in the data or question itself. More knowledge does not remove it. Epistemic uncertainty, by contrast, comes from missing knowledge; knowledge and reasoning are the two epistemic types here.
-
----
-
-### Slide 13: Methodology: Labelling the Type (≈ 1.5 min)
-
-**Say:**
-"To train a classifier we need labelled examples, and nobody hands us the 'type of doubt'. So we use a simple idea: **the type is whichever re-ask removes the doubt**.
-
-For each unsure or wrong answer we ask the same model again, five times, in two ways. Once with the **true evidence**, a passage that contains the needed fact. Once with a **method hint**, the first half of a worked solution that never gives the answer. If the evidence fixes it, the model was missing knowledge. If the hint fixes it, the reasoning was the problem.
-
-'Fixed' means the majority answer becomes correct *and* the five answers agree. Ambiguous, unanswerable and time-dependent questions get their type from their datasets. About 300 answers are also labelled by hand and checked with Cohen's kappa.
-
-The classifier gets the 17 signals, how the answers group, and 5 self-check questions. We compare the current routing rule, a small decision tree and two learned models. We test on unseen datasets and models. The goal is to beat the routing rule clearly, meaning the 95% confidence interval of the improvement is above zero."
-
-**If asked:**
 - *What if both re-asks fix it?* It is labelled 'mixed' and left out of training. Neither fixing it gives 'unresolved', which is also left out.
 - *Why both conditions for 'fixed'?* A correct majority with scattered samples could be luck. Requiring agreement, with at most one dissenting sample out of five, means the doubt is really gone.
+- *Which classifiers are compared?* The current routing rule, a depth-3 decision tree printed as rules, logistic regression, and gradient-boosted trees, all tested on unseen datasets and models.
 
 ---
 
-### Slide 14: Phase 1: Plan, Execution and Result (≈ 1 min)
+### Slide 12: Phase 1: Plan, Execution and Result (≈ 1 min)
 
 **Say:**
-"This table compares what we planned with what we built. The question sets, answer generation, right/wrong labelling, Objective 1 and Objective 2 are all built and tested. Only the full study is pending: up to 12 models on a Mac, about one week of running with one command. Even before that run, stored results from our pipeline give a first real finding: semantic entropy works well on maths, with AUROC 0.86, but not on myth questions, with 0.55."
+"This table compares what we planned with what we built. The question sets, answer generation, right/wrong labelling, Objective 1 and Objective 2 are all built. Only the full study is pending: up to 12 models on a Mac, about one week of running with one command. Even before that run, stored results from our pipeline give a first real finding: semantic entropy works well on maths, with AUROC 0.86, but not on myth questions, with 0.55."
 
 ---
 
-### Slide 15: Phase 1 Execution: Implemented System (≈ 1 min)
+### Slide 13: Implementation and Evaluation Setup (≈ 1.5 min)
 
-**Say:**
-"The system has seven parts: a question-set builder, an answer generator, a right/wrong labeller, the uncertainty scorer, the Objective 1 reports, the Objective 2 framework, and a one-command runner. The runner does machine checks, a small pilot and then all models, and it resumes after a crash.
-
-It uses Ollama to run the open models locally, DeBERTa to check whether two answers mean the same, scikit-learn for the classifiers and metrics, and pandas and SciPy for tables and statistics. There are 3,367 questions, 17 methods, up to 12 models, and 45 automatic tests that all pass."
-
-**If asked:**
-- *Why run locally?* Open models are free, the results can be repeated, and we can read token probabilities, which many paid APIs do not give.
-
----
-
-### Slide 16: Evaluation Setup (≈ 1.5 min)
+**On the slide:** the datasets table, three number tiles, the tools table and the four metrics.
 
 **Say:**
 "We use 11 public datasets, chosen so that every kind of doubt appears:
@@ -223,82 +202,94 @@ It uses Ollama to run the open models locally, DeBERTa to check whether two answ
 - **Unclear or unanswerable:** AmbigQA and SelfAware, 500 questions.
 - **Changing facts:** FreshQA, 200 questions.
 
-We test 9 to 12 open models, depending on the Mac's memory. Each question gets one normal answer and 10 samples at temperature 1. Every threshold is tuned on the **dev** part, 30% of the questions, and results are reported on the **test** part, the other 70%. The judge always comes from a different model family, so a model never grades itself.
+That is 3,367 questions, 17 methods and up to 12 models.
 
-The metrics: **AUROC**, whether wrong answers are ranked as more unsure; **AURAC**, accuracy when unsure answers are refused; **ECE**, whether a stated 70% is right 70% of the time; and **macro-F1** for the type classifier. For statistics we use 95% bootstrap confidence intervals, the DeLong test to compare two methods, grouped 5-fold cross-validation, and leave-one-dataset, model or family out."
+For the implementation, Ollama runs the open models locally, DeBERTa checks whether two answers mean the same, scikit-learn gives the classifiers and metrics, and pandas and SciPy give the tables and statistics.
+
+There are four metrics:
+- **AUROC:** are wrong answers ranked as more unsure?
+- **AURAC:** accuracy when unsure answers are refused.
+- **ECE:** is a stated 70% right 70% of the time?
+- **Macro-F1:** the quality of the type classifier."
 
 **If asked:**
-- *Why tune on dev only?* If we tuned on the test questions, the numbers would look better than they really are. Separating them keeps the result honest.
+- *Why run locally?* Open models are free, the results can be repeated, and we can read token probabilities, which many paid APIs do not give.
+- *How do you avoid tuning on the test data?* Each dataset is split once into 30% dev and 70% test. Every threshold and choice uses dev only, and all results are reported on test.
+- *How do you know a difference is real?* We use 95% bootstrap confidence intervals, the DeLong test to compare two methods, grouped 5-fold cross-validation, and leave-one-dataset, model or family out.
+- *Where are the datasets?* In `data/uq_sets/`: one file per dataset, plus `MANIFEST.json` with each source, version, licence and checksum.
 
 ---
 
-### Slide 17: Results: Baseline Uncertainty per Model (1/3), facts and myths (≈ 1.5 min)
+### Slide 14: Results: Baseline Uncertainty per Model (1/3), facts and myths (≈ 1.5 min)
 
-**On the slide:** a table with one row per model. Each cell lists values in the order of the Datasets column. Marked "PLACEHOLDER VALUES".
+**On the slide:** a table with one row per model. Each cell lists values in the order of the Datasets column. Marked "EXPECTED VALUES".
 
 **Say:**
-"These three slides show the main Objective 1 table: one row for each of the 12 models. **The values are placeholders** that show the layout; the full run on the Mac replaces them. Only the accuracy and AUROC of qwen2.5:3b and llama2:7b on TruthfulQA are real, from our earlier runs.
+"These three slides show the main Objective 1 table: one row for each of the 12 models. **These are expected values, not yet our measurements.** Accuracy comes from published benchmark scores where they exist, and AUROC from published semantic-entropy results. The full run on the Mac will replace them with measured values. The accuracy and AUROC of qwen2.5:3b and llama2:7b on TruthfulQA are already real, from our earlier runs.
 
-How to read a row: the Datasets column gives the order, and every other cell follows that order. There are three measures:
+How to read a row: the Datasets column gives the order, and every other cell follows that order.
 - **Accuracy:** the share of answers that are right.
 - **AUROC of semantic entropy:** how well entropy separates wrong answers from right ones. 0.5 is guessing and 1 is perfect.
-- **Blind spot:** the share of the model's *errors* made while it was sure, that is, when all its samples agreed. Sampling cannot catch these.
 
-This slide covers facts and myths. The pattern we expect, and see in the real cells, is that fact questions give a useful AUROC while TruthfulQA stays near 0.5. On qwen2.5:3b it is 0.55."
+This slide covers facts and myths. Fact questions are expected to give a useful AUROC, around 0.75 to 0.8, which is the level reported in the Nature paper. TruthfulQA stays near 0.5, and our real cells confirm it: 0.55 for qwen2.5:3b and 0.58 for llama2:7b. PopQA accuracy is low for every model because it asks about rare facts; published work shows small models answer only about one in five such questions."
 
 **If asked:**
-- *Why placeholders?* The full study needs about a week on the Mac and has not run yet. The real TruthfulQA cells already show the expected pattern.
+- *Where do these numbers come from?* Published model benchmarks and the semantic-entropy papers; Part D of my notes lists every source. The full run replaces them with our own measurements.
+- *Where is the blind spot?* No paper reports it for these models, so it will be added from the full run.
 
 ---
 
-### Slide 18: Results (2/3), reasoning (≈ 1 min)
+### Slide 15: Results (2/3), reasoning (≈ 1 min)
 
 **Say:**
-"This is the reasoning group: GSM8K, MATH, StrategyQA and ARC. Again the values are placeholders, except qwen2.5:3b and llama2:7b on GSM8K, which are real. For example, qwen2.5:3b answers 84% of GSM8K questions correctly, and entropy separates its wrong answers well, with AUROC 0.86. Maths gives the clearest signal: when the model is wrong, its ten answers scatter over different numbers, so entropy is high. The full table will also show how accuracy grows with model size inside each family."
+"This is the reasoning group: GSM8K, MATH, StrategyQA and ARC. The values are expected from published results, except qwen2.5:3b and llama2:7b on GSM8K, which are real. For example, qwen2.5:3b answers 84% of GSM8K questions correctly in our run, and entropy separates its wrong answers well, with AUROC 0.86. Published maths scores show the same ordering we expect: newer and larger models do much better, from 24% for llama2:7b up to about 95% for qwen2.5:14b. Maths gives the clearest signal: when the model is wrong, its ten answers scatter over different numbers, so entropy is high."
 
 ---
 
-### Slide 19: Results (3/3), unclear and changing questions (≈ 1 min)
+### Slide 16: Results (3/3), unclear and changing questions (≈ 1 min)
 
 **Say:**
-"The last group is AmbigQA, SelfAware and FreshQA: ambiguous, unanswerable and time-dependent questions. All values here are placeholders. On these questions we expect the **largest blind spot**: a model often gives the same wrong answer every time, for example an outdated fact, so its samples agree and entropy says 'sure'. That is exactly why Objective 2 does not stop at *how* unsure the model is but asks *what kind* of doubt it is."
+"The last group is AmbigQA, SelfAware and FreshQA: ambiguous, unanswerable and time-dependent questions. All values here are expected values. These are the hardest questions: accuracy is lowest and entropy is weaker, because a model often gives the same wrong answer every time, for example an outdated fact. Its samples agree, so entropy says 'sure'. That is exactly why Objective 2 does not stop at *how* unsure the model is but asks *what kind* of doubt it is."
 
 ---
 
-### Slide 20: Results: Maths vs Myths Across Models (≈ 1 min)
+### Slide 17: Results: Maths vs Myths Across Models (≈ 1.5 min)
 
-**On the slide:** a bar chart of AUROC on GSM8K and TruthfulQA for all 12 models, and three summary boxes. Marked "PLACEHOLDER VALUES".
+**On the slide:** a bar chart of AUROC on GSM8K and TruthfulQA for all 12 models, three summary boxes, and a green "Ready to run" strip. Marked "EXPECTED VALUES".
 
 **Say:**
-"This chart puts maths and myths side by side for every model. The values are placeholders, except the qwen2.5:3b and llama2:7b bars, which are real: 0.86 and 0.79 on maths, against 0.55 and 0.58 on myths.
+"This chart puts maths and myths side by side for every model. The bars are expected values from published results, except qwen2.5:3b and llama2:7b, which are real: 0.86 and 0.79 on maths, against 0.55 and 0.58 on myths.
 
-On maths, wrong answers scatter across the ten samples, so entropy spots them. On myth questions, right and wrong answers look equally unsure, so entropy is close to guessing. The boxes summarise the chart: the average AUROC on maths, the average on myths, and the number of models where entropy works better on maths. The real run will confirm or correct this pattern."
+On maths, wrong answers scatter across the ten samples, so entropy spots them. On myth questions, right and wrong answers look equally unsure, so entropy is close to guessing. The boxes summarise the chart: about 0.83 on maths against 0.57 on myths, and entropy is expected to work better on maths for every model.
+
+The green strip shows what is already verified, using a dry run with a simulated model. Every one of the 6 stages finished for 12 models. After a simulated crash, only the 5 missing questions out of 30 were redone. Over 80% of the planted types were recovered. So the full study is ready to run."
+
+**If asked:**
+- *What is a simulated model?* A stand-in that answers instantly with known, planted kinds of uncertainty. It proves the code works end to end; its numbers say nothing about real models, so they are never reported as results.
 
 ---
 
-### Slide 21: Results: Readiness of the Full Study (≈ 45 s)
+### Slide 18: Discussion and Limitations (≈ 1 min)
+
+**On the slide:** two columns of three short points.
 
 **Say:**
-"On the left is what is already verified about the code, using a simulated model. These are checks on the software, not model results: 45 automatic tests pass; all 6 run stages finished in a 12-model test run; after a simulated crash, only the 5 missing questions out of 30 were redone; and in a simulated test, more than 80% of type labels matched the planted types.
+"What we see:
+1. Entropy spots maths errors well.
+2. On myth questions it is close to guessing.
+3. Some errors are made while the model is sure: the blind spot. Sampling cannot see them, so we also test self-checks and classify the type of doubt.
 
-On the right are the outputs the full run will produce: AUROC for all methods, datasets and models; blind spot and calibration; how many samples are needed; detector versus semantic entropy; classifier versus routing rule; and agreement with the human labels."
+Limitations:
+1. Most result numbers are expected values, not yet measured; the real numbers so far cover two models and two datasets.
+2. A judge model marks free-text answers, so a second judge and 100 human checks test the judge.
+3. We only test small open models, 3 to 14 billion parameters. Larger models may behave differently."
 
----
-
-### Slide 22: Discussion and Limitations (≈ 1 min)
-
-**Say:**
-"A few cautions.
-- The result tables are placeholders until the full run. The real numbers so far cover two models and two datasets.
-- Entropy works when answers are short and checkable, like maths. On open questions it is high for right and wrong answers alike.
-- Some errors are made while the model is sure, the blind spot. Sampling cannot see them, so we also test self-checks.
-- A judge model marks free-text answers, so a second judge and 100 human checks test the judge.
-- Type labels come from re-asking, and about 300 human labels check them.
-- We only test small open models, 3 to 14 billion parameters. Larger models may behave differently."
+**If asked:**
+- *How reliable are the type labels?* They come from re-asking, and about 300 hand labels check them with Cohen's kappa.
 
 ---
 
-### Slide 23: Phase 2 Plan (≈ 1 min)
+### Slide 19: Phase 2 Plan (≈ 1 min)
 
 **Say:**
 "Phase 2 uses what Phase 1 learns. First, each unsure answer is routed by its type. Knowledge doubts get **evidence-based verification**: the factual claims are checked against retrieved passages. Reasoning doubts get **structured reasoning**: a plan, worked samples and small programs, followed by a vote. Both are Objective 3. Then we compare the whole system with the base models on faithfulness, hallucination reduction and cost, which is Objective 4.
@@ -307,7 +298,7 @@ We already have a head start. A first pipeline prototype raised GSM8K accuracy f
 
 ---
 
-### Slide 24: References (≈ 15 s)
+### Slide 20: References (≈ 15 s)
 
 **Say:**
 "These are the main papers behind the methods. Semantic entropy is from Farquhar and colleagues, in Nature 2024. Thank you. I am happy to take questions."
@@ -364,7 +355,7 @@ p(c) = (number of samples in group c) / m
 SE = − Σ_c  p(c) · ln p(c)
 ```
 
-**Example (slide 10).** 10 samples: 7 say "Canberra" and 3 say "Sydney".
+**Example (slide 9).** 10 samples: 7 say "Canberra" and 3 say "Sydney".
 
 ```
 SE = −(0.7 · ln 0.7 + 0.3 · ln 0.3)
@@ -814,3 +805,48 @@ Try it on one question: `python -m uncertainty analyze "question" --model qwen2.
 | Cohen's κ | agreement between two raters beyond chance |
 | Intervention | re-asking with evidence or a hint to find what fixes the doubt |
 | Cross-family judge | a grader from a different model family, so a model never grades itself |
+
+---
+
+## Part D: Where the expected values come from
+
+The result slides (14–17) use these values until the full run replaces them. **Published** means the value on the slide is the reported score, rounded. **Real** means our own stored runs. Every other cell is an **estimate**, built from the model's size and family and the published scores around it. Benchmarks use different settings (number of examples in the prompt, chain of thought, base vs instruct model), so published scores are a guide to what our run should find, not a promise.
+
+### Real (our stored runs, 100 test questions each, pipeline Layer 1)
+
+| Model | Dataset | Accuracy | AUROC |
+|---|---|---|---|
+| qwen2.5:3b | GSM8K | 84% | 0.86 |
+| qwen2.5:3b | TruthfulQA | 66% | 0.55 |
+| llama2:7b | GSM8K | 24% | 0.79 |
+| llama2:7b | TruthfulQA | 61% | 0.58 |
+
+### Published accuracy used
+
+| Model | Dataset | On the slide | Published | Source |
+|---|---|---|---|---|
+| qwen2.5:7b | GSM8K | 92% | 91.6 (instruct) | [llm-stats comparison](https://llm-stats.com/models/compare/qwen-2.5-14b-instruct-vs-qwen-2.5-7b-instruct) (secondary) |
+| qwen2.5:7b | MATH | 76% | 75.5 (instruct) | [Qwen2.5 blog](https://qwenlm.github.io/blog/qwen2.5-llm), [Qwen2.5 technical report](https://arxiv.org/pdf/2412.15115) |
+| qwen2.5:14b | GSM8K | 95% | 94.8 (instruct) | [llm-stats comparison](https://llm-stats.com/models/compare/qwen-2.5-14b-instruct-vs-qwen-2.5-7b-instruct) (secondary) |
+| qwen2.5:14b | MATH | 80% | 80.0 (instruct); 75.6 under simple-evals | llm-stats; [Phi-4 technical report](https://arxiv.org/html/2412.08905v1) |
+| llama3.2:3b | GSM8K / MATH / ARC | 78% / 48% / 79% | 77.7 / 48.0 / 78.6 | [Llama 3.2 3B Instruct model card (NVIDIA NIM)](https://docs.api.nvidia.com/nim/reference/meta-llama-3_2-3b-instruct) |
+| llama3.1:8b | GSM8K / MATH / ARC | 85% / 52% / 83% | 84.5 / 51.9 / 83.4 | same model-card table |
+| gemma3:4b | GSM8K | 89% | 89.2 (instruct, 0-shot) | [Gemma 3 model card](https://ai.google.dev/gemma/docs/core/model_card_3) |
+| gemma3:4b | TriviaQA | 66% | 65.8 (pre-trained, 5-shot) | [Gemma 3 listing](https://lmstudio.ai/models/gemma-3) |
+| gemma3:12b | GSM8K / TriviaQA | 94% / 78% | 94.4 / 78.2 | Gemma 3 model card and listing |
+| phi4-mini | GSM8K / ARC | 89% / 84% | 88.6 / 83.7 | [DataLearner](https://www.datalearner.com/en/ai-models/pretrained-models/Phi-4-mini-instruct) (secondary) |
+| phi4 | MATH | 80% | 80.4 | [Phi-4 technical report](https://arxiv.org/html/2412.08905v1) |
+| mistral:7b | TriviaQA | 70% | 69.9 (base) | [Mistral 7B paper](https://arxiv.org/pdf/2310.06825) |
+| llama2:7b | TriviaQA | 64% | 63.8 (base) | Mistral 7B paper |
+
+Close estimates anchored on published numbers: mistral:7b GSM8K 48% (published 52.2 for the base model with a vote of 8 answers, so a single greedy answer will be a bit lower); gemma3 MATH 76% / 84% and phi4-mini MATH 64% (the instruct-model scores in their technical reports; not re-checked here, so treat them as estimates).
+
+### Published basis for the other columns
+
+- **AUROC of semantic entropy.** Farquhar et al. (Nature 2024) report an average AUROC of about 0.79 over 30 task–model pairs (TriviaQA, SQuAD, BioASQ, NQ-Open, SVAMP; LLaMA 2, Falcon, Mistral) ([paper](https://pmc.ncbi.nlm.nih.gov/articles/PMC11186750)). The slides use about 0.80 for popular facts, 0.74–0.77 for long-tail and multi-hop facts, 0.80–0.83 for maths, and lower values for yes/no, ambiguous and time-dependent questions, where only a few distinct answers exist or the model repeats the same wrong answer. TruthfulQA (about 0.57) and GSM8K (about 0.83) follow our own real runs.
+- **PopQA.** Mallen et al. (ACL 2023) show that models answer few long-tail questions: about 16–19% for GPT-J 6B and GPT-3 on the least popular facts ([paper](https://arxiv.org/abs/2212.10511)). The slides use 15–28%.
+- **Everything else** (HaluEval, StrategyQA, AmbigQA, SelfAware, FreshQA, and the remaining TruthfulQA, TriviaQA and ARC cells) is estimated. These datasets have no published scores for these exact models under our setup.
+
+### After the full run
+
+In `build_phase1_deck.py`, put the measured numbers from `uncertainty/results/reports/obj1/` into `EXP`, set `EXPECTED = False`, and rebuild. The tag disappears, and the blind-spot column can be added back from the same reports.

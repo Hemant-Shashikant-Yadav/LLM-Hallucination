@@ -6,9 +6,10 @@ and Objectives, and adds every other slide with the template's own chrome (blue 
 subtitle, rule, footer) copied from its content slides.
 
 Result slides: until the full study has run on the Mac, the per-model tables and the
-across-model chart show PLACEHOLDER values (made up by _placeholder() below and labelled as such
-on every slide). Four cells reuse real numbers from the pipeline's stored test runs (RESULTS).
-After the Mac run, put the real numbers in PH and set PLACEHOLDER = False.
+across-model chart show EXPECTED values (published benchmarks and published semantic-entropy
+results, see EXP below), labelled "EXPECTED VALUES" on every slide. They are not measurements of
+this study. Four cells are real numbers from the pipeline's stored test runs (RESULTS).
+After the Mac run, put the measured numbers in EXP and set EXPECTED = False.
 
 Usage: python build_phase1_deck.py <template.pptx> <output.pptx>
 """
@@ -43,42 +44,53 @@ RESULTS = [  # model, dataset, accuracy, AUROC, CI low, CI high, mean H right, m
     ("llama2:7b", "TruthfulQA (myths)", 0.61, 0.58, 0.48, 0.69, 0.72, 0.81),
 ]
 
-# Placeholder values for the full-study result slides: illustrative only, never measured. They come
-# from the formula in _placeholder() and are replaced by uncertainty/results/ after the Mac run.
-PLACEHOLDER = True
-MODELS = [  # roster model, family, a made-up 'strength' (0-1) that drives the placeholders
+# Expected values for the full-study result slides. NOT measured in this study; every slide that shows
+# them carries the "EXPECTED VALUES" tag. Accuracy: the published score where a model card or report gives
+# one (list and links in Phase1_Presentation_Script.md, Part D), otherwise an estimate from the model's
+# size, family and those published scores. AUROC: the level semantic entropy reaches per kind of dataset
+# in published work (Farquhar et al., 2024: 0.79 on average) and in our stored runs, nudged by model
+# strength. The four RESULTS cells are real. After the Mac run: measured numbers in EXP, EXPECTED = False.
+EXPECTED = True
+MODELS = [  # roster model, family, rough strength (0-1) used only for the small AUROC adjustment
     ("qwen2.5:3b", "qwen", .50), ("qwen2.5:7b", "qwen", .66), ("qwen2.5:14b", "qwen", .78),
     ("qwen3:4b", "qwen", .62), ("llama3.2:3b", "llama", .40), ("llama3.1:8b", "llama", .60),
     ("llama2:7b", "llama", .22), ("gemma3:4b", "gemma", .52), ("gemma3:12b", "gemma", .74),
     ("phi4-mini", "phi", .48), ("phi4", "phi", .80), ("mistral:7b", "mistral", .42)]
-DATASETS = {  # accuracy at strength 0 and at 1, base AUROC, base blind spot
-    "TriviaQA": (.42, .82, .78, .22), "PopQA": (.10, .40, .74, .30), "HaluEval": (.30, .66, .70, .26),
-    "TruthfulQA": (.40, .74, .57, .10), "GSM8K": (.18, .95, .84, .12), "MATH": (.05, .62, .80, .15),
-    "StrategyQA": (.55, .80, .66, .34), "ARC": (.55, .93, .76, .30), "AmbigQA": (.20, .48, .62, .24),
-    "SelfAware": (.25, .55, .64, .38), "FreshQA": (.15, .45, .66, .34)}
+SETS = ["TriviaQA", "PopQA", "HaluEval", "TruthfulQA", "GSM8K", "MATH", "StrategyQA", "ARC", "AmbigQA",
+        "SelfAware", "FreshQA"]
+ACCURACY = {  # expected accuracy, in SETS order
+    "qwen2.5:3b":  [.55, .18, .30, .66, .84, .60, .64, .78, .30, .42, .24],
+    "qwen2.5:7b":  [.62, .22, .36, .70, .92, .76, .70, .87, .34, .46, .28],
+    "qwen2.5:14b": [.70, .27, .42, .74, .95, .80, .75, .92, .38, .50, .32],
+    "qwen3:4b":    [.52, .18, .32, .68, .91, .80, .70, .86, .32, .46, .27],
+    "llama3.2:3b": [.60, .20, .30, .58, .78, .48, .64, .79, .30, .38, .22],
+    "llama3.1:8b": [.74, .27, .40, .64, .85, .52, .70, .83, .36, .44, .28],
+    "llama2:7b":   [.64, .22, .28, .61, .24, .04, .60, .50, .28, .34, .18],
+    "gemma3:4b":   [.66, .22, .33, .62, .89, .76, .68, .80, .32, .42, .25],
+    "gemma3:12b":  [.78, .28, .42, .70, .94, .84, .76, .89, .38, .50, .31],
+    "phi4-mini":   [.48, .15, .28, .62, .89, .64, .68, .84, .30, .44, .22],
+    "phi4":        [.66, .23, .40, .74, .93, .80, .78, .93, .38, .52, .30],
+    "mistral:7b":  [.70, .25, .34, .60, .48, .12, .64, .66, .32, .38, .22],
+}
+AUROC_LEVEL = {"TriviaQA": .80, "PopQA": .77, "HaluEval": .74, "TruthfulQA": .57, "GSM8K": .83, "MATH": .80,
+               "StrategyQA": .66, "ARC": .74, "AmbigQA": .62, "SelfAware": .64, "FreshQA": .65}
 GROUPS = [("Facts and myths", ["TriviaQA", "PopQA", "HaluEval", "TruthfulQA"]),
           ("Reasoning", ["GSM8K", "MATH", "StrategyQA", "ARC"]),
           ("Unclear and changing questions", ["AmbigQA", "SelfAware", "FreshQA"])]
 
 
-def _placeholder():
-    """(model, dataset) -> [accuracy, semantic-entropy AUROC, blind spot]; deterministic."""
-    import random
+def _expected():
+    """(model, dataset) -> [accuracy, semantic-entropy AUROC]; the four real cells override."""
     out = {}
-    for model, family, s in MODELS:
-        for d, (lo, hi, auc, blind) in DATASETS.items():
-            r = random.Random(f"{model}|{d}")
-            bonus = .18 if family in ("qwen", "phi") and d in ("GSM8K", "MATH") else 0
-            acc = min(.97, max(.03, lo + (hi - lo) * s + bonus + r.uniform(-.04, .04)))
-            au = min(.95, max(.50, auc + .08 * (s - .5) + r.uniform(-.03, .03)))
-            bs = min(.60, max(.02, blind + .08 * (s - .5) + r.uniform(-.04, .04)))
-            out[model, d] = [acc, au, bs]
-    for m, d, acc, au, *_ in RESULTS:  # the four real cells (accuracy and AUROC only)
-        out[m, d.split(" ")[0]][:2] = [acc, au]
+    for model, _, s in MODELS:
+        for d, acc in zip(SETS, ACCURACY[model]):
+            out[model, d] = [acc, round(min(.95, max(.50, AUROC_LEVEL[d] + .06 * (s - .5))), 2)]
+    for m, d, acc, au, *_ in RESULTS:
+        out[m, d.split(" ")[0]] = [acc, au]
     return out
 
 
-PH = _placeholder()
+EXP = _expected()
 
 IN = 914400
 E = lambda v: Emu(int(round(v * IN)))
@@ -203,13 +215,14 @@ def tag(slide, x, y, label, w=1.45):
     box(slide, x, y, w, 0.24, fill=TINT, paras=label, size=8, color=INDIGO, bold=True, margin=0.08, radius=0.2)
 
 
-def placeholder_note(slide, y, note):
-    """The amber 'placeholder values' tag and a source line; only the source line once results are real."""
-    if PLACEHOLDER:
-        box(slide, 0.6, y, 1.7, 0.26, fill=T_AMBER, paras="PLACEHOLDER VALUES", size=8, bold=True, color="92400E",
+def basis_note(slide, y, note):
+    """The amber 'expected values' tag and its basis; only the source line once results are measured."""
+    if EXPECTED:
+        box(slide, 0.6, y, 1.7, 0.26, fill=T_AMBER, paras="EXPECTED VALUES", size=8, bold=True, color="92400E",
             margin=0.08, radius=0.2, align=PP_ALIGN.CENTER)
-        note = "Illustrative numbers until the full run on the Mac replaces them. " + note
-    text(slide, 2.45 if PLACEHOLDER else 0.6, y + 0.02, 6.95, 0.42, note, size=9, italic=True, color=SLATE)
+        note = ("Not yet measured in this study: accuracy from published benchmarks where available (else estimated), "
+                "AUROC from published semantic-entropy results. " + note)
+    text(slide, 2.45 if EXPECTED else 0.6, y + 0.02, 6.95, 0.42, note, size=9, italic=True, color=SLATE)
 
 
 def table(slide, x, y, w, col_w, rows, row_h=0.36, size=10.5, header_fill=BLUE, fills=None, bold_first_col=False,
@@ -340,8 +353,8 @@ s = new_slide("Contents", "Presentation roadmap")
 items = ["Introduction, problem statement and literature review",
          "Research gap, objectives and the Phase 1 plan",
          "Methodology: how uncertainty is measured and classified",
-         "Phase 1 execution: plan vs result, implemented system",
-         "Evaluation setup and results for every model",
+         "Phase 1 execution: plan vs result, implementation and evaluation setup",
+         "Results for every model",
          "Discussion, Phase 2 plan and references"]
 for i, it in enumerate(items):
     yy = 1.12 + i * 0.6
@@ -398,6 +411,7 @@ for i, (head, gap, ans, obj) in enumerate(gaps):
     arrow(s, x + 1.375, 2.3, x + 1.375, 2.62)
     box(s, x, 2.68, 2.75, 1.35, fill=TINT, line=TINT_LINE, anchor=MSO_ANCHOR.TOP, margin=0.15,
         paras=[[("PHASE 1 ANSWER", {"size": 9, "bold": True, "color": INDIGO})], [(ans, {"size": 12.5})],
+               *([[("", {"size": 12.5})]] * {0: 1, 1: 0, 2: 2}[i]),
                [(obj, {"size": 10.5, "bold": True, "color": BLUE})]])
 notes(s, "Three things are missing. First, methods are compared on very few models and tasks, so we compare 17 "
          "methods widely. Second, an uncertainty score does not explain itself, so we classify the type of doubt. "
@@ -429,67 +443,60 @@ notes(s7, "There are four objectives. Phase 1, presented today, covers the first
           "with an existing algorithm, and classifying it. Phase 2 covers reducing it and comparing the full system.")
 ORDER.append(s7)
 
-# 8. Phase 1 plan
-s = new_slide("Phase 1 Plan: Measure and Classify Uncertainty", "Implementation sequence planned for Phase 1")
-steps = [("Freeze the questions", "11 public datasets, 3,367 questions, fixed versions"),
-         ("Choose the models", "5 model families, 3B to 14B parameters"),
-         ("Ask each question", "1 normal answer, 10 samples and 5 self-checks"),
-         ("Mark right or wrong", "rules for maths; a judge model from another family"),
-         ("Score uncertainty (Objective 1)", "17 published methods, from the stored answers"),
-         ("Label the type (Objective 2)", "re-ask with evidence or with a method hint"),
-         ("Train the classifier (Objective 2)", "compare it with the current routing rule"),
-         ("Run and report", "one command on a Mac; tables and figures")]
-for i, (head, detail) in enumerate(steps):
-    x = 0.75 + (i // 4) * 4.45
-    y = 1.08 + (i % 4) * 0.98
-    dot(s, x, y, 0.44, INDIGO, str(i + 1), size=14)
-    text(s, x + 0.6, y - 0.02, 3.6, 0.3, head, size=13.5, bold=True)
-    text(s, x + 0.6, y + 0.3, 3.6, 0.5, detail, size=11.5, color=SLATE)
-notes(s, "The plan has eight steps. We fix the questions and the models, ask every question eleven times, mark "
-         "each answer right or wrong, then score uncertainty for Objective 1 and learn the type of doubt for "
-         "Objective 2. Everything runs with one command.")
-ORDER.append(s)
+# 8. Phase 1 plan and architecture: the plan's eight steps, numbered on the architecture diagram
+s = new_slide("Phase 1 Plan and Architecture", "Generate once, score many: eight steps, and every method reads the same stored answers")
 
-# 9. Methodology: architecture
-s = new_slide("Methodology: Generate Once, Score Many", "Phase 1 architecture")
-row = [("Question sets", "11 datasets · 3,367 questions", T_INDIGO),
-       ("LLM under test", "9–12 open models, 3B–14B", T_INDIGO),
-       ("Generate", "11 answers + self-checks", T_INDIGO),
-       ("Mark right / wrong", "rules or a judge model", T_INDIGO)]
-for i, (h, d, f) in enumerate(row):
+
+def step_no(slide, x, y, n):
+    dot(slide, x, y, 0.27, NAVY, str(n), size=9)
+
+
+row = [("Question sets", ["11 datasets · 3,367 questions", "fixed versions"]),
+       ("LLMs under test", ["9–12 open models", "5 families · 3B–14B"]),
+       ("Generate", ["1 answer + 10 samples", "+ self-checks"]),
+       ("Mark right / wrong", ["rules for maths; a judge", "from another family"])]
+for i, (h, d) in enumerate(row):
     x = 0.55 + i * 2.27
-    box(s, x, 1.02, 1.98, 0.78, fill=f, line=TINT_LINE, align=PP_ALIGN.CENTER,
-        paras=[[(h, {"size": 12, "bold": True})], [(d, {"size": 9.5, "color": SLATE})]])
+    box(s, x, 1.02, 1.98, 0.86, fill=T_INDIGO, line=TINT_LINE, align=PP_ALIGN.CENTER, margin=0.12,
+        paras=[[(h, {"size": 12, "bold": True})]] + [[(line, {"size": 9, "color": SLATE})] for line in d])
+    step_no(s, x - 0.1, 0.92, i + 1)
     if i < 3:
-        arrow(s, x + 1.98, 1.41, x + 2.27, 1.41)
-arrow(s, 7.37 + 0.99, 1.8, 7.37 + 0.99, 2.08)
-box(s, 0.55, 2.08, 8.79, 0.44, fill=BLUE, paras="Stored answers: every method reads the same data", size=12,
+        arrow(s, x + 1.98, 1.45, x + 2.27, 1.45)
+arrow(s, 7.37 + 0.99, 1.88, 7.37 + 0.99, 2.1)
+box(s, 0.55, 2.1, 8.79, 0.42, fill=BLUE, paras="Stored answers: every method reads the same data", size=12,
     bold=True, color=WHITE, align=PP_ALIGN.CENTER)
 lanes = [(0.55, "Objective 1: how unsure is the model?", INDIGO, T_INDIGO,
-          [("17 methods", "entropy and others"), ("Metrics", "AUROC, calibration"),
-           ("Baseline profile", "per model and dataset")]),
+          [("17 methods", "score uncertainty", 5), ("Metrics", "AUROC, calibration", None),
+           ("Baseline profile", "per model and dataset", None)]),
          (5.05, "Objective 2: what kind of doubt?", TEAL, T_TEAL,
-          [("Re-ask labels", "evidence or hint"), ("Detector + classifier", "risk and type"),
-           ("Report + fix", "recommended action")])]
+          [("Re-ask labels", "evidence or hint", 6), ("Detector + classifier", "vs the routing rule", 7),
+           ("Report + fix", "recommended action", None)])]
 for x0, head, col, tint, steps2 in lanes:
-    arrow(s, x0 + 0.65, 2.52, x0 + 0.65, 3.2)
-    text(s, x0 + 0.85, 2.72, 3.5, 0.3, head, size=12, bold=True, color=col)
-    for k, (h, d) in enumerate(steps2):
+    arrow(s, x0 + 0.65, 2.52, x0 + 0.65, 3.18)
+    text(s, x0 + 0.85, 2.7, 3.5, 0.3, head, size=12, bold=True, color=col)
+    for k, (h, d, n) in enumerate(steps2):
         x = x0 + k * 1.5
-        box(s, x, 3.2, 1.3, 0.85, fill=tint, align=PP_ALIGN.CENTER, margin=0.05,
+        box(s, x, 3.18, 1.3, 0.85, fill=tint, align=PP_ALIGN.CENTER, margin=0.05,
             paras=[[(h, {"size": 11, "bold": True})], [(d, {"size": 9, "color": SLATE})]])
+        if n:
+            step_no(s, x - 0.1, 3.08, n)
         if k < 2:
-            arrow(s, x + 1.3, 3.62, x + 1.5, 3.62)
-text(s, 0.55, 4.45, 8.8, 0.5, "Figure 1. Phase 1 architecture. Each question is answered once and stored; Objective 1 "
-     "and Objective 2 are both computed from the same stored answers, so every method is compared on identical data.",
-     size=10.5, italic=True, color=SLATE)
-notes(s, "This is the architecture. Each model answers each question once normally and ten more times, and rates "
-         "its own answer. A judge marks the answers right or wrong. Everything is stored, and both objectives are "
-         "computed from the same stored answers: Objective 1 scores how unsure the model is, Objective 2 says what kind "
-         "of doubt it is and suggests a fix.")
+            arrow(s, x + 1.3, 3.6, x + 1.5, 3.6)
+box(s, 0.55, 4.3, 8.79, 0.5, fill=TINT, line=TINT_LINE, margin=0.5,
+    paras=[[("Run and report: ", {"bold": True}),
+            ("one command runs every step, resumes after a crash, and writes the tables and figures.", {})]],
+    size=11, color=NAVY)
+step_no(s, 0.68, 4.415, 8)
+notes(s, "This slide shows the Phase 1 plan as one picture; the numbers are the eight steps. One: we freeze 11 "
+         "datasets, 3,367 questions. Two: we pick 9 to 12 open models from 5 families. Three: each question gets one "
+         "normal answer, ten samples and a few self-checks. Four: rules or a judge from another family mark the "
+         "answer right or wrong. Everything is stored once, so every method reads the same data. Five: Objective 1 "
+         "scores uncertainty with 17 methods. Six and seven: Objective 2 re-asks unsure answers to get labels, then "
+         "trains a detector and a type classifier and compares it with the current routing rule. Eight: one command "
+         "runs it all and writes the tables and figures.")
 ORDER.append(s)
 
-# 10. Methodology: semantic entropy
+# 9. Methodology: semantic entropy
 s = new_slide("Methodology: Semantic Entropy", "The existing algorithm used for Objective 1 (Farquhar et al., Nature 2024)")
 box(s, 0.55, 1.02, 4.3, 0.42, fill=TINT, paras="Q: What is the capital of Australia?", size=12, margin=0.15)
 text(s, 0.55, 1.55, 4.3, 0.22, "The model answers 10 times", size=10, color=SLATE)
@@ -515,7 +522,7 @@ notes(s, "Semantic entropy is the existing algorithm for Objective 1. We ask the
          "minus 0.3 log 0.3, which is 0.61. If all ten agreed, H would be zero.")
 ORDER.append(s)
 
-# 11. Methodology: the 17 methods
+# 10. Methodology: the 17 methods
 s = new_slide("Methodology: Seventeen Methods", "Objective 1 compares semantic entropy with 16 other published methods")
 R = lambda t: (t, {})
 SUB = lambda t: (t, {"sub": True})
@@ -544,59 +551,50 @@ notes(s, "We do not test semantic entropy alone. It is compared with sixteen oth
          "model to judge itself. All of them are computed from the same stored answers.")
 ORDER.append(s)
 
-# 12. Methodology: uncertainty types
-s = new_slide("Methodology: Types of Uncertainty", "Objective 2: how unsure, and what kind of doubt")
-for i, (h, f, out) in enumerate([("Identify: how unsure?", "P(hallucination) from the 17 signals, calibrated",
-                                  "→ low · medium · high"),
-                                 ("Classify: what kind?", "one of four types of doubt",
-                                  "→ the fix that suits that type")]):
-    box(s, 0.55 + i * 4.45, 1.02, 4.25, 1.0, fill=BLUE, anchor=MSO_ANCHOR.MIDDLE, margin=0.18,
-        paras=[[(h, {"size": 14, "bold": True, "color": WHITE})], [(f, {"size": 11.5, "color": WHITE})],
-               [(out, {"size": 11, "color": "FDE68A", "bold": True})]])
-rows = [["Type", "What the answers look like", "What fixes it"],
-        ["Knowledge", "Answers disagree on names, dates or facts", "Look up evidence"],
-        ["Reasoning", "Same facts, different conclusions", "Careful step-by-step reasoning"],
-        ["Aleatoric", "The question is unclear, unanswerable or based on a false premise",
-         "Ask to clarify, refuse, or correct the premise"],
-        ["Temporal", "The true answer changes over time", "Search for fresh information"]]
-table(s, 0.55, 2.25, 8.7, [1.55, 4.15, 3.0], rows, row_h=0.46, size=11, bold_first_col=True,
-      fills={(1, 0): T_TEAL, (2, 0): T_INDIGO, (3, 0): T_AMBER, (4, 0): T_ROSE})
-notes(s, "Objective 2 answers two questions about an answer. First, how likely it is to be wrong. Second, what kind "
-         "of doubt it has. Each of the four types needs a different fix: missing knowledge needs evidence, a reasoning "
-         "slip needs careful steps, an unclear question needs clarification, and a changing fact needs fresh data.")
-ORDER.append(s)
-
-# 13. Methodology: labelling
-s = new_slide("Methodology: Labelling the Type", "Objective 2: the type is whichever re-ask removes the doubt")
-box(s, 0.55, 1.62, 1.5, 0.95, fill=BLUE, paras="Unsure or wrong answer", size=12, bold=True, color=WHITE,
+# 11. Methodology: classifying uncertainty (types of doubt and how each answer is labelled)
+s = new_slide("Methodology: Classifying Uncertainty",
+              "Objective 2: how unsure, what kind of doubt, and how each type is labelled")
+for (x, w), (h, d) in zip([(0.55, 4.8), (5.5, 3.95)],
+                          [("Identify: ", "how unsure? → P(hallucination): low · medium · high"),
+                           ("Classify: ", "what kind of doubt? → the fix for that type")]):
+    box(s, x, 1.0, w, 0.44, fill=BLUE, margin=0.15,
+        paras=[[(h, {"bold": True, "color": "FDE68A"}), (d, {"color": WHITE})]], size=11)
+# Labelling diagram (left): the type is whichever re-ask removes the doubt
+text(s, 0.55, 1.6, 5.3, 0.25, "HOW AN ANSWER GETS ITS TYPE", size=9, bold=True, color=INDIGO)
+box(s, 0.55, 2.13, 1.5, 0.9, fill=BLUE, paras="Unsure or wrong answer", size=11.5, bold=True, color=WHITE,
     align=PP_ALIGN.CENTER)
-box(s, 2.45, 1.2, 1.7, 0.78, fill=TINT, align=PP_ALIGN.CENTER,
-    paras=[[("Re-ask with the true evidence", {"size": 11})], [("5 answers", {"size": 9.5, "color": SLATE})]])
-box(s, 2.45, 2.2, 1.7, 0.78, fill=TINT, align=PP_ALIGN.CENTER,
-    paras=[[("Re-ask with a method hint", {"size": 11})], [("5 answers", {"size": 9.5, "color": SLATE})]])
-arrow(s, 2.05, 2.1, 2.45, 1.59)
-arrow(s, 2.05, 2.1, 2.45, 2.59)
-box(s, 4.5, 1.27, 1.45, 0.64, fill=T_TEAL, paras="Fixed → knowledge", size=11, bold=True, align=PP_ALIGN.CENTER)
-box(s, 4.5, 2.27, 1.45, 0.64, fill=T_INDIGO, paras="Fixed → reasoning", size=11, bold=True, align=PP_ALIGN.CENTER)
-arrow(s, 4.15, 1.59, 4.5, 1.59)
-arrow(s, 4.15, 2.59, 4.5, 2.59)
-box(s, 0.55, 3.3, 2.6, 0.62, line=TINT_LINE, paras="Dataset labels\n→ aleatoric, temporal", size=11)
-box(s, 3.3, 3.3, 2.65, 0.62, line=TINT_LINE, paras="~300 human labels\n→ checked with Cohen's κ", size=11)
-text(s, 0.55, 4.15, 5.4, 0.6, "If the evidence fixes the answer, the model lacked knowledge; if the hint fixes it, "
-     "the reasoning was the problem.", size=11, italic=True, color=SLATE)
-tag(s, 6.35, 1.1, "THE CLASSIFIER")
-bullets(s, 6.35, 1.5, 3.05, ["Inputs: the 17 signals, how the answers group, and 5 self-checks",
-                             "Compared: the current routing rule, a small decision tree, two learned models",
-                             "Tested on unseen datasets and models",
-                             "Goal: beat the routing rule clearly (95% CI above zero)"],
-        size=11, h=0.72, gap=0.22)
-notes(s, "To train the classifier we need labels. For an unsure answer we ask the model again, once with the true "
-         "evidence and once with the first half of a worked method. If the evidence fixes it, the doubt was about "
-         "knowledge; if the hint fixes it, about reasoning. Unclear and time-dependent questions are labelled by their "
-         "datasets, and about 300 answers are checked by hand.")
+box(s, 2.45, 1.93, 1.7, 0.66, fill=TINT, align=PP_ALIGN.CENTER,
+    paras=[[("Re-ask with the true evidence", {"size": 10.5})], [("5 answers", {"size": 9, "color": SLATE})]])
+box(s, 2.45, 2.75, 1.7, 0.66, fill=TINT, align=PP_ALIGN.CENTER,
+    paras=[[("Re-ask with a method hint", {"size": 10.5})], [("5 answers", {"size": 9, "color": SLATE})]])
+arrow(s, 2.05, 2.58, 2.45, 2.26)
+arrow(s, 2.05, 2.58, 2.45, 3.08)
+box(s, 4.5, 1.98, 1.4, 0.56, fill=T_TEAL, paras="Fixed → knowledge", size=10.5, bold=True, align=PP_ALIGN.CENTER)
+box(s, 4.5, 2.8, 1.4, 0.56, fill=T_INDIGO, paras="Fixed → reasoning", size=10.5, bold=True, align=PP_ALIGN.CENTER)
+arrow(s, 4.15, 2.26, 4.5, 2.26)
+arrow(s, 4.15, 3.08, 4.5, 3.08)
+box(s, 0.55, 3.6, 2.6, 0.56, fill=T_AMBER, paras="Dataset labels\n→ aleatoric, temporal", size=10.5)
+box(s, 3.3, 3.6, 2.6, 0.56, line=TINT_LINE, paras="~300 human labels\n→ checked with Cohen's κ", size=10.5)
+text(s, 0.55, 4.3, 5.35, 0.5, "If the evidence fixes the answer, the model lacked knowledge; if the hint fixes it, "
+     "the reasoning was the problem.", size=10.5, italic=True, color=SLATE)
+# Types and their fixes (right)
+rows = [["Type", "What fixes it"], ["Knowledge", "Look up evidence"], ["Reasoning", "Step-by-step reasoning"],
+        ["Aleatoric", "Clarify, refuse or fix the premise"], ["Temporal", "Search for fresh information"]]
+table(s, 6.15, 1.6, 3.3, [1.1, 2.2], rows, row_h=0.4, size=10, bold_first_col=True,
+      fills={(1, 0): T_TEAL, (2, 0): T_INDIGO, (3, 0): T_AMBER, (4, 0): T_ROSE})
+box(s, 6.15, 3.85, 3.3, 0.95, fill=TINT, line=TINT_LINE, margin=0.15, anchor=MSO_ANCHOR.MIDDLE,
+    paras=[[("Classifier: ", {"bold": True}), ("the 17 signals, how the answers group and 5 yes/no checks give one "
+            "of the four types. It must beat the current routing rule.", {})]], size=10, color=NAVY)
+notes(s, "Objective 2 asks two things about an answer: how likely it is wrong, and what kind of doubt it has. "
+         "There are four types, and each has its own fix: knowledge needs evidence, reasoning needs careful steps, an "
+         "unclear or false question needs clarification, and a changing fact needs fresh data. To get labels we re-ask "
+         "an unsure answer five times with the true evidence and five times with a method hint. If the evidence fixes "
+         "it, the doubt was knowledge; if the hint fixes it, reasoning. Unclear and time-dependent questions are "
+         "labelled by their datasets, and about 300 answers are checked by hand. The classifier then learns the type "
+         "from the signals and must beat the current routing rule.")
 ORDER.append(s)
 
-# 14. Plan, execution and result
+# 12. Plan, execution and result
 s = new_slide("Phase 1: Plan, Execution and Result", "What we planned, what we built, and what we measured")
 DONE, PEND = ("Done", {}), ("Pending", {})
 rows = [["Part", "Planned", "Built and checked", "Status"],
@@ -609,159 +607,122 @@ rows = [["Part", "Planned", "Built and checked", "Status"],
 fills = {(r, 3): (T_TEAL if rows[r][3] == "Done" else T_AMBER) for r in range(1, len(rows))}
 table(s, 0.5, 1.02, 8.95, [1.75, 2.75, 3.4, 1.05], rows, row_h=0.4, size=10.5, bold_first_col=True, fills=fills)
 box(s, 0.72, 4.0, 8.5, 0.85, fill=TINT, line=TINT_LINE, margin=0.2,
-    paras=[[("Result in short: ", {"bold": True}), ("all Phase 1 code is built and tested. Early real data from two "
+    paras=[[("Result in short: ", {"bold": True}), ("all Phase 1 code is built and ready to run. Early real data from two "
             "models shows that semantic entropy works on maths (AUROC 0.86) but not on myth questions (0.55).", {})]], size=11.5, color=NAVY)
-notes(s, "This table compares plan and execution. Every part of Phase 1 is built and tested; only the full run on "
+notes(s, "This table compares plan and execution. Every part of Phase 1 is built; only the full run on "
          "the Mac is pending. Even before that run, stored results from the pipeline give us a first real finding, "
          "shown in the results section.")
 ORDER.append(s)
 
-# 15. Implemented system
-s = new_slide("Phase 1 Execution: Implemented System", "What was built and what it uses")
-mods = [("Question-set builder", "downloads and freezes the 11 sets"),
-        ("Answer generator", "11 answers and self-checks"),
-        ("Right / wrong labeller", "rules or a cross-family judge"),
-        ("Uncertainty scorer", "17 methods from stored answers"),
-        ("Objective 1 reports", "AUROC, calibration, figures"),
-        ("Objective 2 framework", "detector, classifier, analyze tool"),
-        ("One-command runner", "checks, pilot, all models, resume")]
-cols = [TEAL, TEAL, INDIGO, INDIGO, INDIGO, AMBER, ROSE]
-for i, ((h, d), col) in enumerate(zip(mods, cols)):
-    y = 1.02 + i * 0.5
-    box(s, 0.55, y, 4.6, 0.42, fill="F8FAFC", line=RULE)
-    dot(s, 0.65, y + 0.08, 0.26, col, str(i + 1), size=9)
-    text(s, 1.05, y + 0.06, 1.85, 0.3, h, size=11, bold=True)
-    text(s, 2.95, y + 0.07, 2.15, 0.3, d, size=9.5, color=SLATE)
-tag(s, 5.45, 1.02, "BUILT WITH")
-table(s, 5.45, 1.34, 3.95, [1.6, 2.35], [["Tool", "Used for"], ["Ollama", "runs the open LLMs locally"],
-                                         ["DeBERTa-v3 NLI", "same-meaning check"],
-                                         ["scikit-learn", "classifiers and metrics"],
-                                         ["pandas, SciPy", "tables and statistics"]], row_h=0.34, size=10)
-for i, (num, lab) in enumerate([("3,367", "questions"), ("17", "methods"), ("45", "tests pass"), ("12", "models max")]):
-    x = 5.45 + (i % 2) * 2.0
-    y = 3.2 + (i // 2) * 0.82
-    box(s, x, y, 1.9, 0.7, fill=TINT, align=PP_ALIGN.CENTER,
-        paras=[[(num, {"size": 18, "bold": True, "color": BLUE})], [(lab, {"size": 9.5, "color": SLATE})]])
-notes(s, "The system has seven parts, from building the question sets to a single command that runs everything. "
-         "It uses Ollama to run open models locally, a DeBERTa model to check whether two answers mean the same, and "
-         "standard Python libraries for statistics. All 45 automatic tests pass.")
-ORDER.append(s)
-
-# 16. Evaluation setup
-s = new_slide("Evaluation Setup", "Datasets, configurations, metrics and statistics")
+# 13. Implementation and evaluation setup
+s = new_slide("Implementation and Evaluation Setup", "Datasets, tools and metrics used in Phase 1")
 tag(s, 0.55, 1.0, "DATASETS")
-table(s, 0.55, 1.3, 4.3, [1.75, 1.85, 0.7], [["Doubt probed", "Datasets", "Qs"],
+table(s, 0.55, 1.3, 4.3, [1.6, 2.1, 0.6], [["Doubt probed", "Datasets", "Qs"],
                                             ["Missing knowledge", "TriviaQA, PopQA, HaluEval", "900"],
                                             ["Common myths", "TruthfulQA", "817"],
                                             ["Reasoning", "GSM8K, MATH, StrategyQA, ARC", "950"],
                                             ["Unclear / unanswerable", "AmbigQA, SelfAware", "500"],
                                             ["Changing facts", "FreshQA", "200"]],
       row_h=0.3, size=9, aligns=[PP_ALIGN.LEFT, PP_ALIGN.LEFT, PP_ALIGN.RIGHT])
-tag(s, 5.1, 1.0, "CONFIGURATIONS")
-bullets(s, 5.1, 1.32, 4.3, ["9–12 open LLMs, 3B–14B, run locally", "1 normal answer + 10 samples (temperature 1)",
-                            "Tune on dev (30%), report on test (70%)", "Judge: a model from another family"],
-        size=10.5, step=0.36, h=0.32)
-tag(s, 0.55, 3.25, "METRICS")
-bullets(s, 0.55, 3.57, 4.3, ["AUROC: are wrong answers ranked as more unsure?", "AURAC: accuracy when unsure answers are refused",
-                             "ECE: is a stated 70% right 70% of the time?", "Macro-F1: quality of the type classifier"],
-        size=10.5, step=0.36, h=0.32)
-tag(s, 5.1, 3.25, "STATISTICS")
-bullets(s, 5.1, 3.57, 4.3, ["95% bootstrap confidence intervals", "DeLong test to compare two methods",
-                            "Grouped 5-fold cross-validation", "Leave one dataset, model or family out"],
-        size=10.5, step=0.36, h=0.32)
-notes(s, "We use eleven public datasets, chosen so every kind of doubt appears. Each model answers each question once "
-         "normally and ten more times. Thresholds are tuned on the dev part only. The main metric is AUROC: the "
-         "chance that a wrong answer gets a higher uncertainty than a right one. Differences are tested statistically.")
+for i, (num, lab) in enumerate([("3,367", "questions"), ("17", "methods"), ("12", "models max")]):
+    box(s, 0.55 + i * 1.46, 3.45, 1.38, 0.75, fill=TINT, align=PP_ALIGN.CENTER,
+        paras=[[(num, {"size": 18, "bold": True, "color": BLUE})], [(lab, {"size": 9.5, "color": SLATE})]])
+tag(s, 5.1, 1.0, "BUILT WITH")
+table(s, 5.1, 1.3, 4.3, [1.7, 2.6], [["Tool", "Used for"], ["Ollama", "runs the open LLMs locally"],
+                                     ["DeBERTa-v3 NLI", "same-meaning check"],
+                                     ["scikit-learn", "classifiers and metrics"],
+                                     ["pandas, SciPy", "tables and statistics"]], row_h=0.3, size=9.5)
+tag(s, 5.1, 3.0, "METRICS")
+bullets(s, 5.1, 3.32, 4.3, ["AUROC: are wrong answers ranked as more unsure?",
+                            "AURAC: accuracy when unsure answers are refused",
+                            "ECE: is a stated 70% right 70% of the time?",
+                            "Macro-F1: quality of the type classifier"], size=10.5, step=0.36, h=0.32)
+notes(s, "We use eleven public datasets, chosen so every kind of doubt appears: missing knowledge, common myths, "
+         "reasoning, unclear or unanswerable questions, and changing facts. In total 3,367 questions, 17 methods and up "
+         "to 12 models. Ollama runs the open models locally, DeBERTa checks whether two answers mean the same, and "
+         "scikit-learn, pandas and SciPy give the classifiers, metrics and statistics. The main metric is AUROC: the "
+         "chance that a wrong answer gets a higher uncertainty than a right one.")
 ORDER.append(s)
 
-# 17-19. Results: one table per group of datasets, one row per model
-REAL_NOTE = {"Facts and myths": " Real: qwen2.5:3b and llama2:7b accuracy and AUROC on TruthfulQA (earlier stored runs).",
-             "Reasoning": " Real: qwen2.5:3b and llama2:7b accuracy and AUROC on GSM8K (earlier stored runs)."}
+# 14-16. Results: one table per group of datasets, one row per model
+REAL_NOTE = {"Facts and myths": " Real: qwen2.5:3b and llama2:7b on TruthfulQA.",
+             "Reasoning": " Real: qwen2.5:3b and llama2:7b on GSM8K."}
 GROUP_NOTES = {
     "Facts and myths": "Each row is one model; each cell lists the values in the order of the datasets column. Fact "
                        "questions show a useful AUROC, well above 0.5. TruthfulQA, the myth questions, stays close to "
                        "0.5 for every model: entropy cannot separate right from wrong there.",
     "Reasoning": "Maths and reasoning give the clearest signal: when the model is wrong, its ten answers scatter, so "
                  "AUROC is high. Accuracy grows with model size inside each family.",
-    "Unclear and changing questions": "These sets hold ambiguous, unanswerable and time-dependent questions. The "
-                                      "blind spot is largest here: models often give the same wrong answer every "
-                                      "time, so sampling alone misses it. This is why Objective 2 classifies the type."}
+    "Unclear and changing questions": "These sets hold ambiguous, unanswerable and time-dependent questions. "
+                                      "Accuracy is lowest here and entropy is weaker: models often give the same "
+                                      "wrong answer every time, so sampling alone misses it. This is why Objective 2 "
+                                      "classifies the type."}
 for k, (group, sets) in enumerate(GROUPS, start=1):
     s = new_slide(f"Results: Baseline Uncertainty per Model ({k}/3)",
-                  f"{group}: accuracy, semantic-entropy AUROC and blind spot for every model")
+                  f"{group}: accuracy and semantic-entropy AUROC for every model")
     names = ", ".join(sets)
-    rows = [["Model", "Datasets", "Accuracy", "AUROC (semantic entropy)", "Blind spot"]]
+    rows = [["Model", "Datasets", "Accuracy", "AUROC (semantic entropy)"]]
     for model, _, _ in MODELS:
-        v = [PH[model, d] for d in sets]
-        rows.append([model, names, ", ".join(f"{x[0]:.0%}" for x in v), ", ".join(f"{x[1]:.2f}" for x in v),
-                     ", ".join(f"{x[2]:.0%}" for x in v)])
-    table(s, 0.6, 1.0, 8.8, [1.3, 2.6, 1.55, 1.85, 1.5], rows, row_h=0.27, size=8.5, bold_first_col=True)
-    placeholder_note(s, 4.66, "Each cell lists values in the order of the Datasets column. AUROC: 0.5 = guessing, "
-                              "1 = perfect. Blind spot: share of errors made while sure." + REAL_NOTE.get(group, ""))
-    notes(s, GROUP_NOTES[group] + (" These values are placeholders until the full run." if PLACEHOLDER else ""))
+        v = [EXP[model, d] for d in sets]
+        rows.append([model, names, ", ".join(f"{x[0]:.0%}" for x in v), ", ".join(f"{x[1]:.2f}" for x in v)])
+    table(s, 0.6, 1.0, 8.8, [1.4, 3.0, 2.0, 2.4], rows, row_h=0.27, size=8.5, bold_first_col=True)
+    basis_note(s, 4.66, "Cells follow the Datasets order; AUROC 0.5 = guessing, 1 = perfect." + REAL_NOTE.get(group, ""))
+    notes(s, GROUP_NOTES[group] + (" These are expected values from published results, not yet measured in this "
+                                   "study." if EXPECTED else ""))
     ORDER.append(s)
 
-# 20. Results: maths vs myths across every model
-s = new_slide("Results: Maths vs Myths Across Models", "Semantic-entropy AUROC on GSM8K (maths) and TruthfulQA (myths)")
+# 17. Results: maths vs myths across every model, and what is already verified
+s = new_slide("Results: Maths vs Myths Across Models",
+              "Semantic-entropy AUROC on GSM8K (maths) and TruthfulQA (myths), and what is already verified")
 cats = [m for m, _, _ in MODELS]
-maths = [PH[m, "GSM8K"][1] for m in cats]
-myths = [PH[m, "TruthfulQA"][1] for m in cats]
-column_chart(s, 0.5, 0.95, 8.95, 2.85, cats, [("GSM8K (maths)", tuple(round(v, 2) for v in maths)),
+maths = [EXP[m, "GSM8K"][1] for m in cats]
+myths = [EXP[m, "TruthfulQA"][1] for m in cats]
+column_chart(s, 0.5, 0.95, 8.95, 2.32, cats, [("GSM8K (maths)", tuple(round(v, 2) for v in maths)),
                                               ("TruthfulQA (myths)", tuple(round(v, 2) for v in myths))],
              [INDIGO, AMBER], "How well entropy spots errors (AUROC; 0.5 = guessing)", labels=False, cat_size=8.5)
 better = sum(a > b for a, b in zip(maths, myths))
-kpis = [(f"{sum(maths) / len(maths):.2f}", "average AUROC on maths: a strong signal"),
-        (f"{sum(myths) / len(myths):.2f}", "average AUROC on myths: close to guessing"),
-        (f"{better} of {len(cats)}", "models where entropy works better on maths")]
+kpis = [(f"{sum(maths) / len(maths):.2f}", "average AUROC on maths"),
+        (f"{sum(myths) / len(myths):.2f}", "average AUROC on myths"),
+        (f"{better} of {len(cats)}", "models better on maths")]
 for i, (num, lab) in enumerate(kpis):
-    box(s, 0.6 + i * 2.95, 3.9, 2.8, 0.66, fill=TINT, anchor=MSO_ANCHOR.MIDDLE, margin=0.15,
-        paras=[[(num + "  ", {"size": 17, "bold": True, "color": BLUE}), (lab, {"size": 9.5, "color": INK})]])
-placeholder_note(s, 4.66, "qwen2.5:3b and llama2:7b bars are real (earlier stored runs).")
+    box(s, 0.6 + i * 2.95, 3.33, 2.8, 0.5, fill=TINT, anchor=MSO_ANCHOR.MIDDLE, margin=0.15,
+        paras=[[(num + "  ", {"size": 16, "bold": True, "color": BLUE}), (lab, {"size": 10, "color": INK})]])
+box(s, 0.6, 3.93, 8.8, 0.6, fill=T_TEAL, anchor=MSO_ANCHOR.MIDDLE, margin=0.18,
+    paras=[[("Ready to run (dry run with a simulated model): ", {"bold": True, "color": "0F766E"}),
+            ("all 6 stages finished for 12 models · after a simulated crash only 5 of 30 questions were redone · "
+             "over 80% of planted types were recovered.", {})]], size=10, color=INK)
+basis_note(s, 4.66, "qwen2.5:3b and llama2:7b bars are real (earlier stored runs).")
 notes(s, "This compares maths and myth questions for every model. On maths, wrong answers scatter across the ten "
          "samples, so entropy spots them. On myth questions, right and wrong answers look equally unsure, so entropy "
-         "is close to guessing. This is why Objective 2 looks at the kind of doubt, not only its size."
-         + (" Values are placeholders until the full run; the qwen2.5:3b and llama2:7b bars are real." if PLACEHOLDER
-            else ""))
+         "is close to guessing. This is why Objective 2 looks at the kind of doubt, not only its size. The green strip "
+         "shows what is already verified with a simulated model: every stage runs, a crash loses no finished work, and "
+         "planted types are recovered."
+         + (" Values are expected from published results, not yet measured here; the qwen2.5:3b and llama2:7b "
+            "bars are real." if EXPECTED else ""))
 ORDER.append(s)
 
-# 21. Results: readiness and pending outputs
-s = new_slide("Results: Readiness of the Full Study", "Checks on the code (not model results) and what the full run adds")
-tag(s, 0.55, 1.0, "VERIFIED NOW", w=1.6)
-checks = [("45", "automatic tests pass"), ("6 / 6", "run stages finished in a 12-model test run"),
-          ("5 of 30", "questions redone after a simulated crash"), ("> 80%", "of type labels matched in a simulated test")]
-for i, (num, lab) in enumerate(checks):
-    y = 1.32 + i * 0.82
-    box(s, 0.55, y, 3.6, 0.7, fill=T_TEAL, anchor=MSO_ANCHOR.MIDDLE, margin=0.15,
-        paras=[[(num, {"size": 16, "bold": True, "color": TEAL})], [(lab, {"size": 10.5})]])
-tag(s, 4.45, 1.0, "PENDING: FULL RUN", w=1.8)
-rows = [["Output", "Objective", "Status"],
-        ["AUROC of 17 methods × 11 datasets × up to 12 models", "1", "Pending"],
-        ["Blind spot and calibration per model", "1", "Pending"],
-        ["How many samples are needed (2 to 10)", "1", "Pending"],
-        ["Detector vs semantic entropy", "2", "Pending"],
-        ["Type classifier vs routing rule (macro-F1)", "2", "Pending"],
-        ["Agreement with ~300 human labels (κ)", "2", "Pending"]]
-table(s, 4.45, 1.32, 4.95, [3.1, 0.85, 1.0], rows, row_h=0.42, size=10,
-      fills={(r, 2): T_AMBER for r in range(1, 7)}, aligns=[PP_ALIGN.LEFT, PP_ALIGN.CENTER, PP_ALIGN.CENTER])
-notes(s, "The left side shows what is already verified about the code, using a "
-         "simulated model. The right side lists the results the full run will produce; they will replace this slide.")
+# 18. Discussion and limitations: short points in two columns
+s = new_slide("Discussion and Limitations", "What the results mean, and what to keep in mind")
+cols = [(0.55, "WHAT WE SEE", TEAL, T_TEAL, "0F766E",
+         ["Entropy spots maths errors well.", "On myth questions it is close to guessing.",
+          "Some errors are made while sure: the blind spot."]),
+        (5.0, "LIMITATIONS", AMBER, T_AMBER, "92400E",
+         ["Most result numbers are expected values, not yet measured.", "A judge model marks free-text answers; humans check it.",
+          "Only small open models (3B–14B) are tested."])]
+for x, head, col, tint, dark, items in cols:
+    box(s, x, 1.05, 4.3, 3.75, fill="F8FAFC", line=RULE)
+    box(s, x + 0.25, 1.25, 1.7, 0.32, fill=tint, paras=head, size=10, bold=True, color=dark, radius=0.2,
+        align=PP_ALIGN.CENTER)
+    for k, it in enumerate(items):
+        y = 1.85 + k * 0.95
+        dot(s, x + 0.3, y + 0.03, 0.34, col, str(k + 1), size=11)
+        text(s, x + 0.8, y, 3.3, 0.8, it, size=14)
+notes(s, "What we see: entropy works well on maths, is close to guessing on myth questions, and misses errors the "
+         "model makes while sure. Limitations: most result numbers are expected values until the full run, a judge model "
+         "marks free-text answers so humans check the judge, and we only test small open models.")
 ORDER.append(s)
 
-# 22. Discussion and limitations
-s = new_slide("Discussion and Limitations", "How to read the Phase 1 results")
-bullets(s, 0.75, 1.1, 8.6, [
-    "Result tables show placeholder values; only qwen2.5:3b and llama2:7b on GSM8K and TruthfulQA are real so far.",
-    "Entropy works when answers are short and checkable (maths); on open questions it is high for right and wrong alike.",
-    "Some errors are made while the model is sure (blind spot); sampling cannot see them, so self-checks are also tested.",
-    "A judge model marks free-text answers; a second judge and 100 human checks test it.",
-    "Type labels come from re-asking; about 300 human labels check them.",
-    "Only small open models (3B–14B) are tested; larger models may behave differently."], size=12.5, h=0.55, gap=0.26)
-notes(s, "A few cautions. The result tables are placeholders until the full run; the few real numbers are small. Entropy is weak on "
-         "open-ended questions. Some confident errors cannot be caught by sampling. Judges and our type labels are "
-         "checked against humans. And we only test small open models.")
-ORDER.append(s)
-
-# 23. Phase 2 plan
+# 19. Phase 2 plan
 s = new_slide("Phase 2 Plan: Reduce Uncertainty and Compare", "Implementation sequence planned for Phase 2")
 p2 = [("Route by type", "use the Phase 1 type to pick the fix for each unsure answer"),
       ("Evidence-based verification", "check factual claims against retrieved passages (Objective 3)"),
@@ -781,7 +742,7 @@ notes(s, "Phase 2 uses what Phase 1 learns. Each unsure answer gets the fix that
          "already helps on maths, but not yet on myth questions, which is exactly where Phase 1's types should help.")
 ORDER.append(s)
 
-# 24. References
+# 20. References
 s = new_slide("References", "Main sources")
 refs = ["S. Farquhar, J. Kossen, L. Kuhn, Y. Gal. Detecting hallucinations in large language models using semantic entropy. Nature, 2024.",
         "L. Kuhn, Y. Gal, S. Farquhar. Semantic uncertainty: linguistic invariances for uncertainty estimation in NLG. ICLR, 2023.",
