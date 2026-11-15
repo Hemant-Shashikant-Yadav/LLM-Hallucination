@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GSM8K question record (uncertainty study)",
+  "description": "One question of the GSM8K set (arithmetic word problems) used by thesis Objectives 1-2. Mirrors the Item dataclass in uncertainty/sets/load.py.",
+  "x-file": "data/uq_sets/gsm8k.jsonl",
+  "x-format": "JSON Lines: one JSON object per line, each matching this schema",
+  "x-records": 250,
+  "x-source": "openai/gsm8k (main, test)",
+  "x-revision": "740312add88f781978c0658806c59bc2815b9866",
+  "x-license": "MIT",
+  "x-sha256": "20979f47830d25994d299d5034a67ef1af2b015813977c5252207c272f3407da",
+  "x-note": "Documentation only: no code reads this schema.",
+  "type": "object",
+  "required": [
+    "id",
+    "set",
+    "kind",
+    "question",
+    "answers",
+    "split",
+    "core",
+    "judge_mode",
+    "incorrect_answers",
+    "gold_type",
+    "evidence",
+    "hint",
+    "meta"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique question id in this set: 'gsm_' + the source dataset's own id.",
+      "pattern": "^gsm_"
+    },
+    "set": {
+      "type": "string",
+      "const": "gsm8k",
+      "description": "Name of the question set: always 'gsm8k'."
+    },
+    "kind": {
+      "type": "string",
+      "const": "number",
+      "description": "Answer kind 'number': one number, read and graded by rules."
+    },
+    "question": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The question as sent to the model."
+    },
+    "answers": {
+      "type": "array",
+      "description": "The final numeric answer as a string (one item), normalised (no commas or units).",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "maxItems": 1
+    },
+    "split": {
+      "type": "string",
+      "enum": [
+        "dev",
+        "test"
+      ],
+      "description": "Fixed, seeded split: dev (30%) only tunes thresholds and trains the Objective 2 models; every reported number uses test (70%)."
+    },
+    "core": {
+      "type": "boolean",
+      "description": "true if the question is in the core tier, the subset every model answers; the file itself is the extended tier."
+    },
+    "judge_mode": {
+      "type": "string",
+      "enum": [
+        "match"
+      ],
+      "description": "How the LLM judge grades a free-text answer: match (agrees with a reference answer), truthfulqa (TruthfulQA judge prompt), abstain (correct only if it says the question cannot be answered), premise (correct only if it rejects the false premise). Unused for rule-graded kinds."
+    },
+    "incorrect_answers": {
+      "type": "array",
+      "description": "Known false answers from the dataset (TruthfulQA only; empty elsewhere).",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 0,
+      "maxItems": 0
+    },
+    "gold_type": {
+      "type": "null",
+      "description": "Always null: the dataset gives no uncertainty type for these questions."
+    },
+    "evidence": {
+      "type": "null",
+      "description": "Always null: this set has no evidence passage."
+    },
+    "hint": {
+      "type": "string",
+      "description": "First half of the reference solution's lines, calculator notes removed. Used only by the Objective 2 reasoning intervention."
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {},
+      "description": "No extra fields in this set (always an empty object)."
+    }
+  },
+  "examples": [
+    {
+      "id": "gsm_113",
+      "set": "gsm8k",
+      "kind": "number",
+      "question": "Ryan plants 2 flowers a day in his garden. After 15 days, how many flowers does he have if 5 did not grow?",
+      "answers": [
+        "25"
+      ],
+      "split": "test",
+      "core": false,
+      "judge_mode": "match",
+      "incorrect_answers": [],
+      "gold_type": null,
+      "evidence": null,
+      "hint": "Ryan plants 2*15=30 flowers in total.",
+      "meta": {}
+    }
+  ]
+}

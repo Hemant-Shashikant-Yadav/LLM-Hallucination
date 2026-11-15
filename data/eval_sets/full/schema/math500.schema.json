@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MATH-500 record (pipeline evaluation)",
+  "description": "One problem of MATH-500, frozen for the pipeline's evaluation (thesis Objectives 3-4).",
+  "x-file": "data/eval_sets/full/math500.jsonl",
+  "x-format": "JSON Lines: one JSON object per line, each matching this schema",
+  "x-records": 500,
+  "x-source": "HuggingFaceH4/MATH-500",
+  "x-revision": "6e4ed1a2a79af7d8630a6b768ec859cb5af4d3be",
+  "x-license": "MIT (from MATH)",
+  "x-sha256": "6692a2f6c5b6baf141262d3442edf2480657580ff901b7e46977a34fcc07af72",
+  "x-note": "Documentation only: no code reads this schema.",
+  "type": "object",
+  "required": [
+    "id",
+    "subject",
+    "level",
+    "question",
+    "kind",
+    "key"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^m500-",
+      "description": "Problem id: 'm500-' + the problem's path in the original MATH test set."
+    },
+    "subject": {
+      "type": "string",
+      "description": "MATH subject of the problem.",
+      "enum": [
+        "Algebra",
+        "Counting & Probability",
+        "Geometry",
+        "Intermediate Algebra",
+        "Number Theory",
+        "Prealgebra",
+        "Precalculus"
+      ]
+    },
+    "level": {
+      "type": "integer",
+      "description": "Difficulty level, 1 (easiest) to 5.",
+      "enum": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "minimum": 1,
+      "maximum": 5
+    },
+    "question": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The problem statement in LaTeX."
+    },
+    "kind": {
+      "type": "string",
+      "const": "expr",
+      "description": "Answer kind: always 'expr' (a maths expression read by rules)."
+    },
+    "key": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Final answer as given by MATH-500."
+    }
+  },
+  "examples": [
+    {
+      "id": "m500-test/algebra/1098.json",
+      "subject": "Algebra",
+      "level": 3,
+      "question": "Evaluate $(1+2i)6-3i$.",
+      "kind": "expr",
+      "key": "6+9i"
+    }
+  ]
+}

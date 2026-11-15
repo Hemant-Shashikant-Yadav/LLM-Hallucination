@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AmbigQA question record (uncertainty study)",
+  "description": "One question of the AmbigQA set (ambiguous questions) used by thesis Objectives 1-2. Mirrors the Item dataclass in uncertainty/sets/load.py.",
+  "x-file": "data/uq_sets/ambigqa.jsonl",
+  "x-format": "JSON Lines: one JSON object per line, each matching this schema",
+  "x-records": 200,
+  "x-source": "sewon/ambig_qa (light, validation; multipleQAs only)",
+  "x-revision": "e969d0132f4dd28c2939d55be34f1788c00ccfe7",
+  "x-license": "CC BY-SA 3.0",
+  "x-sha256": "029d3335468c6ae78441ef075add2926b4fa743b6e5d803b912bd17086ed65dd",
+  "x-note": "Documentation only: no code reads this schema.",
+  "type": "object",
+  "required": [
+    "id",
+    "set",
+    "kind",
+    "question",
+    "answers",
+    "split",
+    "core",
+    "judge_mode",
+    "incorrect_answers",
+    "gold_type",
+    "evidence",
+    "hint",
+    "meta"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique question id in this set: 'ambig-' + the source dataset's own id.",
+      "pattern": "^ambig-"
+    },
+    "set": {
+      "type": "string",
+      "const": "ambigqa",
+      "description": "Name of the question set: always 'ambigqa'."
+    },
+    "kind": {
+      "type": "string",
+      "const": "short",
+      "description": "Answer kind 'short': free-text answer, graded by an LLM judge from another model family."
+    },
+    "question": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The question as sent to the model."
+    },
+    "answers": {
+      "type": "array",
+      "description": "Every answer of every reading, deduplicated, at most 20; an answer to any reading counts as correct.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "maxItems": 20
+    },
+    "split": {
+      "type": "string",
+      "enum": [
+        "dev",
+        "test"
+      ],
+      "description": "Fixed, seeded split: dev (30%) only tunes thresholds and trains the Objective 2 models; every reported number uses test (70%)."
+    },
+    "core": {
+      "type": "boolean",
+      "description": "true if the question is in the core tier, the subset every model answers; the file itself is the extended tier."
+    },
+    "judge_mode": {
+      "type": "string",
+      "enum": [
+        "match"
+      ],
+      "description": "How the LLM judge grades a free-text answer: match (agrees with a reference answer), truthfulqa (TruthfulQA judge prompt), abstain (correct only if it says the question cannot be answered), premise (correct only if it rejects the false premise). Unused for rule-graded kinds."
+    },
+    "incorrect_answers": {
+      "type": "array",
+      "description": "Known false answers from the dataset (TruthfulQA only; empty elsewhere).",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 0,
+      "maxItems": 0
+    },
+    "gold_type": {
+      "type": "string",
+      "description": "Uncertainty type the dataset itself guarantees (ambiguous, unanswerable, false_premise or temporal); null when it gives none.",
+      "enum": [
+        "ambiguous"
+      ]
+    },
+    "evidence": {
+      "type": "null",
+      "description": "Always null: this set has no evidence passage."
+    },
+    "hint": {
+      "type": "null",
+      "description": "Always null: this set has no hint."
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "readings"
+      ],
+      "properties": {
+        "readings": {
+          "type": "array",
+          "description": "The question's readings (up to 8), each rewritten as an unambiguous question with its own answers.",
+          "minItems": 2,
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "required": [
+              "question",
+              "answers"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "question": {
+                "type": "string",
+                "minLength": 1,
+                "description": "One reading, written as its own question."
+              },
+              "answers": {
+                "type": "array",
+                "description": "Answers to this reading.",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1,
+                "maxItems": 7
+              }
+            }
+          }
+        }
+      },
+      "description": "Extra fields kept from the source dataset (for strata and analysis)."
+    }
+  },
+  "examples": [
+    {
+      "id": "ambig--3421486869502537513",
+      "set": "ambigqa",
+      "kind": "short",
+      "question": "When does the new royal liverpool hospital open?",
+      "answers": [
+        "1978",
+        "2022"
+      ],
+      "split": "test",
+      "core": true,
+      "judge_mode": "match",
+      "incorrect_answers": [],
+      "gold_type": "ambiguous",
+      "evidence": null,
+      "hint": null,
+      "meta": {
+        "readings": [
+          {
+            "question": "When does the new royal liverpool hospital open before redevelopment?",
+            "answers": [
+              "1978"
+            ]
+          },
+          {
+            "question": "When does the new royal liverpool hospital open after redevelopment?",
+            "answers": [
+              "2022"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

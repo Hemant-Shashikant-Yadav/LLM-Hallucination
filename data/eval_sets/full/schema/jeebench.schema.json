@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "JEEBench record (pipeline evaluation)",
+  "description": "One problem of JEEBench, frozen for the pipeline's evaluation (thesis Objectives 3-4).",
+  "x-file": "data/eval_sets/full/jeebench.jsonl",
+  "x-format": "JSON Lines: one JSON object per line, each matching this schema",
+  "x-records": 515,
+  "x-source": "daman1209arora/jeebench (JEE Advanced)",
+  "x-revision": "d070d1113ce365df05903763a2017ec2d0d56118",
+  "x-license": "MIT",
+  "x-sha256": "6ae852bf68ac5e40eb556a6e64df1941eb524bbc78915c5f4c67c419083008ab",
+  "x-note": "Documentation only: no code reads this schema.",
+  "type": "object",
+  "required": [
+    "id",
+    "subject",
+    "type",
+    "exam",
+    "question",
+    "kind",
+    "key"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^jee-",
+      "description": "Problem id: 'jee-' + subject + '-' + the dataset's index."
+    },
+    "subject": {
+      "type": "string",
+      "description": "Subject: phy (physics), chem (chemistry) or math (mathematics).",
+      "enum": [
+        "chem",
+        "math",
+        "phy"
+      ]
+    },
+    "type": {
+      "type": "string",
+      "description": "Question type as given by JEEBench.",
+      "enum": [
+        "Integer",
+        "MCQ",
+        "MCQ(multiple)",
+        "Numeric"
+      ]
+    },
+    "exam": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The exam paper the problem comes from."
+    },
+    "question": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The problem statement (may contain LaTeX)."
+    },
+    "kind": {
+      "type": "string",
+      "description": "Answer kind: choice = one correct option, multi = one or more correct options, value = an integer or numeric answer.",
+      "enum": [
+        "choice",
+        "multi",
+        "value"
+      ]
+    },
+    "key": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Gold answer: the option letter(s) in lower case (for example 'b' or 'abd'), or the number."
+    }
+  },
+  "examples": [
+    {
+      "id": "jee-math-52",
+      "subject": "math",
+      "type": "Integer",
+      "exam": "JEE Adv 2016 Paper 1",
+      "question": "What is the total number of distinct $x \\in[0,1]$ for which $\\int_{0}^{x} \\frac{t^{2}}{1+t^{4}} d t=2 x-1$?",
+      "kind": "value",
+      "key": "1"
+    }
+  ]
+}

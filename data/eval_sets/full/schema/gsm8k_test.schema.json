@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GSM8K test split (full) record (pipeline evaluation)",
+  "description": "One problem of GSM8K test split (full), frozen for the pipeline's evaluation (thesis Objectives 3-4).",
+  "x-file": "data/eval_sets/full/gsm8k_test.jsonl",
+  "x-format": "JSON Lines: one JSON object per line, each matching this schema",
+  "x-records": 1319,
+  "x-source": "openai/gsm8k",
+  "x-revision": "740312add88f781978c0658806c59bc2815b9866",
+  "x-license": "MIT",
+  "x-sha256": "38ab30905125a2d45124b1bdc8e852d44246104bb027d8ae624cf6d958feaefb",
+  "x-note": "Documentation only: no code reads this schema.",
+  "type": "object",
+  "required": [
+    "id",
+    "prompt",
+    "correct_answers",
+    "numerical_answer"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^gsm_",
+      "description": "Question id: 'gsm_' + the problem's index in the GSM8K test split."
+    },
+    "prompt": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The word problem, as sent to the model."
+    },
+    "correct_answers": {
+      "type": "array",
+      "description": "The final numeric answer (one item).",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "maxItems": 1
+    },
+    "numerical_answer": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The same final answer as a plain string."
+    }
+  },
+  "examples": [
+    {
+      "id": "gsm_1",
+      "prompt": "A robe takes 2 bolts of blue fiber and half that much white fiber.  How many bolts in total does it take?",
+      "correct_answers": [
+        "3"
+      ],
+      "numerical_answer": "3"
+    }
+  ]
+}

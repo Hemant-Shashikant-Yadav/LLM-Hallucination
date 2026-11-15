@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "StrategyQA question record (uncertainty study)",
+  "description": "One question of the StrategyQA set (multi-step commonsense) used by thesis Objectives 1-2. Mirrors the Item dataclass in uncertainty/sets/load.py.",
+  "x-file": "data/uq_sets/strategyqa.jsonl",
+  "x-format": "JSON Lines: one JSON object per line, each matching this schema",
+  "x-records": 250,
+  "x-source": "ChilleD/StrategyQA (test) + official facts/decompositions from voidful/StrategyQA strategyqa_train.json",
+  "x-revision": "705562638fe1d8ca6bb98c66fc8f94d45fda8c83 + 2279eaf9f2580aef77ed6fa0efd7846c381ab5a0",
+  "x-license": "MIT",
+  "x-sha256": "a54617655f3711482c2a866776248dbdd792e45de7941c60efd91d26c79c14a4",
+  "x-note": "Documentation only: no code reads this schema.",
+  "type": "object",
+  "required": [
+    "id",
+    "set",
+    "kind",
+    "question",
+    "answers",
+    "split",
+    "core",
+    "judge_mode",
+    "incorrect_answers",
+    "gold_type",
+    "evidence",
+    "hint",
+    "meta"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique question id in this set: 'sqa-' + the source dataset's own id.",
+      "pattern": "^sqa-"
+    },
+    "set": {
+      "type": "string",
+      "const": "strategyqa",
+      "description": "Name of the question set: always 'strategyqa'."
+    },
+    "kind": {
+      "type": "string",
+      "const": "yesno",
+      "description": "Answer kind 'yesno': yes or no, read and graded by rules."
+    },
+    "question": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The question as sent to the model."
+    },
+    "answers": {
+      "type": "array",
+      "description": "'yes' or 'no' (one item).",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "maxItems": 1
+    },
+    "split": {
+      "type": "string",
+      "enum": [
+        "dev",
+        "test"
+      ],
+      "description": "Fixed, seeded split: dev (30%) only tunes thresholds and trains the Objective 2 models; every reported number uses test (70%)."
+    },
+    "core": {
+      "type": "boolean",
+      "description": "true if the question is in the core tier, the subset every model answers; the file itself is the extended tier."
+    },
+    "judge_mode": {
+      "type": "string",
+      "enum": [
+        "match"
+      ],
+      "description": "How the LLM judge grades a free-text answer: match (agrees with a reference answer), truthfulqa (TruthfulQA judge prompt), abstain (correct only if it says the question cannot be answered), premise (correct only if it rejects the false premise). Unused for rule-graded kinds."
+    },
+    "incorrect_answers": {
+      "type": "array",
+      "description": "Known false answers from the dataset (TruthfulQA only; empty elsewhere).",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 0,
+      "maxItems": 0
+    },
+    "gold_type": {
+      "type": "null",
+      "description": "Always null: the dataset gives no uncertainty type for these questions."
+    },
+    "evidence": {
+      "type": "string",
+      "description": "The official supporting facts for the question, joined. Used only by the Objective 2 knowledge intervention."
+    },
+    "hint": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "'Break the question into steps: (1) ... (2) ...' from the official decomposition; null when it has fewer than 2 steps. Used only by the Objective 2 reasoning intervention."
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "term"
+      ],
+      "properties": {
+        "term": {
+          "type": "string",
+          "description": "The Wikipedia term the question was written from."
+        }
+      },
+      "description": "Extra fields kept from the source dataset (for strata and analysis)."
+    }
+  },
+  "examples": [
+    {
+      "id": "sqa-b8de21dae500bfa66b7b",
+      "set": "strategyqa",
+      "kind": "yesno",
+      "question": "Does water have viscosity?",
+      "answers": [
+        "no"
+      ],
+      "split": "test",
+      "core": true,
+      "judge_mode": "match",
+      "incorrect_answers": [],
+      "gold_type": null,
+      "evidence": "Viscosity is resistance of fluid to deformation. Water is not resistant to deformation.",
+      "hint": "Break the question into steps: (1) What is viscosity? (2) Is water #1?",
+      "meta": {
+        "term": "Viscosity"
+      }
+    }
+  ]
+}

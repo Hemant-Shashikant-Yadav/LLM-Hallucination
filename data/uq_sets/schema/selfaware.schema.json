@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SelfAware question record (uncertainty study)",
+  "description": "One question of the SelfAware set (unanswerable questions) used by thesis Objectives 1-2. Mirrors the Item dataclass in uncertainty/sets/load.py.",
+  "x-file": "data/uq_sets/selfaware.jsonl",
+  "x-format": "JSON Lines: one JSON object per line, each matching this schema",
+  "x-records": 300,
+  "x-source": "github.com/yinzhangyue/SelfAware data/SelfAware.json",
+  "x-revision": "6b15164a3e11a2be714afde0615879dcde5c01f8",
+  "x-license": "CC BY-SA 4.0",
+  "x-sha256": "4f70be6e262320f9956ecb542e85d6f4a21cf187888ba27703e7c1b9f7b8a06d",
+  "x-note": "Documentation only: no code reads this schema.",
+  "type": "object",
+  "required": [
+    "id",
+    "set",
+    "kind",
+    "question",
+    "answers",
+    "split",
+    "core",
+    "judge_mode",
+    "incorrect_answers",
+    "gold_type",
+    "evidence",
+    "hint",
+    "meta"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique question id in this set: 'sa-' + the source dataset's own id.",
+      "pattern": "^sa-"
+    },
+    "set": {
+      "type": "string",
+      "const": "selfaware",
+      "description": "Name of the question set: always 'selfaware'."
+    },
+    "kind": {
+      "type": "string",
+      "const": "short",
+      "description": "Answer kind 'short': free-text answer, graded by an LLM judge from another model family."
+    },
+    "question": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The question as sent to the model."
+    },
+    "answers": {
+      "type": "array",
+      "description": "Accepted answers for answerable questions; an empty list for unanswerable ones.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 0,
+      "maxItems": 358
+    },
+    "split": {
+      "type": "string",
+      "enum": [
+        "dev",
+        "test"
+      ],
+      "description": "Fixed, seeded split: dev (30%) only tunes thresholds and trains the Objective 2 models; every reported number uses test (70%)."
+    },
+    "core": {
+      "type": "boolean",
+      "description": "true if the question is in the core tier, the subset every model answers; the file itself is the extended tier."
+    },
+    "judge_mode": {
+      "type": "string",
+      "enum": [
+        "abstain",
+        "match"
+      ],
+      "description": "How the LLM judge grades a free-text answer: match (agrees with a reference answer), truthfulqa (TruthfulQA judge prompt), abstain (correct only if it says the question cannot be answered), premise (correct only if it rejects the false premise). Unused for rule-graded kinds."
+    },
+    "incorrect_answers": {
+      "type": "array",
+      "description": "Known false answers from the dataset (TruthfulQA only; empty elsewhere).",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 0,
+      "maxItems": 0
+    },
+    "gold_type": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Uncertainty type the dataset itself guarantees (ambiguous, unanswerable, false_premise or temporal); null when it gives none.",
+      "enum": [
+        "unanswerable",
+        null
+      ]
+    },
+    "evidence": {
+      "type": "null",
+      "description": "Always null: this set has no evidence passage."
+    },
+    "hint": {
+      "type": "null",
+      "description": "Always null: this set has no hint."
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "answerable"
+      ],
+      "properties": {
+        "answerable": {
+          "type": "boolean",
+          "description": "true for an answerable control question, false for an unanswerable one."
+        }
+      },
+      "description": "Extra fields kept from the source dataset (for strata and analysis)."
+    }
+  },
+  "examples": [
+    {
+      "id": "sa-535",
+      "set": "selfaware",
+      "kind": "short",
+      "question": "An example of a Assault rifle is what?",
+      "answers": [
+        "stg 44"
+      ],
+      "split": "test",
+      "core": true,
+      "judge_mode": "match",
+      "incorrect_answers": [],
+      "gold_type": null,
+      "evidence": null,
+      "hint": null,
+      "meta": {
+        "answerable": true
+      }
+    }
+  ]
+}

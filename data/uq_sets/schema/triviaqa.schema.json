@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TriviaQA question record (uncertainty study)",
+  "description": "One question of the TriviaQA set (popular facts) used by thesis Objectives 1-2. Mirrors the Item dataclass in uncertainty/sets/load.py.",
+  "x-file": "data/uq_sets/triviaqa.jsonl",
+  "x-format": "JSON Lines: one JSON object per line, each matching this schema",
+  "x-records": 300,
+  "x-source": "mandarjoshi/trivia_qa (rc.wikipedia, validation)",
+  "x-revision": "0f7faf33a3908546c6fd5b73a660e0f8ff173c2f",
+  "x-license": "Apache-2.0",
+  "x-sha256": "eb5421bc20b59f15e82dd3c3c4695fd52c74043f56f302a603258eb7605b860f",
+  "x-note": "Documentation only: no code reads this schema.",
+  "type": "object",
+  "required": [
+    "id",
+    "set",
+    "kind",
+    "question",
+    "answers",
+    "split",
+    "core",
+    "judge_mode",
+    "incorrect_answers",
+    "gold_type",
+    "evidence",
+    "hint",
+    "meta"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique question id in this set: 'tqa-' + the source dataset's own id.",
+      "pattern": "^tqa-"
+    },
+    "set": {
+      "type": "string",
+      "const": "triviaqa",
+      "description": "Name of the question set: always 'triviaqa'."
+    },
+    "kind": {
+      "type": "string",
+      "const": "short",
+      "description": "Answer kind 'short': free-text answer, graded by an LLM judge from another model family."
+    },
+    "question": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The question as sent to the model."
+    },
+    "answers": {
+      "type": "array",
+      "description": "Accepted answers: the main answer first, then its aliases (other names and spellings); at most 12.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "maxItems": 12
+    },
+    "split": {
+      "type": "string",
+      "enum": [
+        "dev",
+        "test"
+      ],
+      "description": "Fixed, seeded split: dev (30%) only tunes thresholds and trains the Objective 2 models; every reported number uses test (70%)."
+    },
+    "core": {
+      "type": "boolean",
+      "description": "true if the question is in the core tier, the subset every model answers; the file itself is the extended tier."
+    },
+    "judge_mode": {
+      "type": "string",
+      "enum": [
+        "match"
+      ],
+      "description": "How the LLM judge grades a free-text answer: match (agrees with a reference answer), truthfulqa (TruthfulQA judge prompt), abstain (correct only if it says the question cannot be answered), premise (correct only if it rejects the false premise). Unused for rule-graded kinds."
+    },
+    "incorrect_answers": {
+      "type": "array",
+      "description": "Known false answers from the dataset (TruthfulQA only; empty elsewhere).",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 0,
+      "maxItems": 0
+    },
+    "gold_type": {
+      "type": "null",
+      "description": "Always null: the dataset gives no uncertainty type for these questions."
+    },
+    "evidence": {
+      "type": "string",
+      "description": "Oracle passage: the Wikipedia sentence naming the answer, with one sentence either side (at most 600 characters). Used only by the Objective 2 knowledge intervention."
+    },
+    "hint": {
+      "type": "null",
+      "description": "Always null: this set has no hint."
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "answer_type"
+      ],
+      "properties": {
+        "answer_type": {
+          "type": "string",
+          "description": "Answer type given by TriviaQA.",
+          "enum": [
+            "FreeForm",
+            "Numerical",
+            "WikipediaEntity"
+          ]
+        }
+      },
+      "description": "Extra fields kept from the source dataset (for strata and analysis)."
+    }
+  },
+  "examples": [
+    {
+      "id": "tqa-dpql_4988",
+      "set": "triviaqa",
+      "kind": "short",
+      "question": "What was Margot’s surname in “The Good Life” TV series?",
+      "answers": [
+        "Leadbetter",
+        "Leadbetter (disambiguation)"
+      ],
+      "split": "test",
+      "core": false,
+      "judge_mode": "match",
+      "incorrect_answers": [],
+      "gold_type": null,
+      "evidence": "*Felicity Kendal — Barbara Good *Penelope Keith — Margo Leadbetter (née Sturgess) *Paul Eddington — Jeremy \"Jerry\" Leadbetter",
+      "hint": null,
+      "meta": {
+        "answer_type": "WikipediaEntity"
+      }
+    }
+  ]
+}

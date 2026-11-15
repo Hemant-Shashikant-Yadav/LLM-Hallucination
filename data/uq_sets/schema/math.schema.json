@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MATH question record (uncertainty study)",
+  "description": "One question of the MATH set (competition maths) used by thesis Objectives 1-2. Mirrors the Item dataclass in uncertainty/sets/load.py.",
+  "x-file": "data/uq_sets/math.jsonl",
+  "x-format": "JSON Lines: one JSON object per line, each matching this schema",
+  "x-records": 250,
+  "x-source": "data/eval_sets/full/math_test.jsonl (EleutherAI/hendrycks_math)",
+  "x-revision": "21a5633873b6a120296cce3e2df9d5550074f4a3",
+  "x-license": "MIT",
+  "x-sha256": "df7561dc651ad11a8d2f9c798d1a3f2cc18c389a7770993367b8f4979ec83a96",
+  "x-note": "Documentation only: no code reads this schema.",
+  "type": "object",
+  "required": [
+    "id",
+    "set",
+    "kind",
+    "question",
+    "answers",
+    "split",
+    "core",
+    "judge_mode",
+    "incorrect_answers",
+    "gold_type",
+    "evidence",
+    "hint",
+    "meta"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique question id in this set: 'math-' + the source dataset's own id.",
+      "pattern": "^math-"
+    },
+    "set": {
+      "type": "string",
+      "const": "math",
+      "description": "Name of the question set: always 'math'."
+    },
+    "kind": {
+      "type": "string",
+      "const": "expr",
+      "description": "Answer kind 'expr': one maths expression, read and graded by rules."
+    },
+    "question": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The question as sent to the model."
+    },
+    "answers": {
+      "type": "array",
+      "description": "The final answer as a LaTeX expression (one item): the last \\boxed{} answer of the reference solution.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "maxItems": 1
+    },
+    "split": {
+      "type": "string",
+      "enum": [
+        "dev",
+        "test"
+      ],
+      "description": "Fixed, seeded split: dev (30%) only tunes thresholds and trains the Objective 2 models; every reported number uses test (70%)."
+    },
+    "core": {
+      "type": "boolean",
+      "description": "true if the question is in the core tier, the subset every model answers; the file itself is the extended tier."
+    },
+    "judge_mode": {
+      "type": "string",
+      "enum": [
+        "match"
+      ],
+      "description": "How the LLM judge grades a free-text answer: match (agrees with a reference answer), truthfulqa (TruthfulQA judge prompt), abstain (correct only if it says the question cannot be answered), premise (correct only if it rejects the false premise). Unused for rule-graded kinds."
+    },
+    "incorrect_answers": {
+      "type": "array",
+      "description": "Known false answers from the dataset (TruthfulQA only; empty elsewhere).",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 0,
+      "maxItems": 0
+    },
+    "gold_type": {
+      "type": "null",
+      "description": "Always null: the dataset gives no uncertainty type for these questions."
+    },
+    "evidence": {
+      "type": "null",
+      "description": "Always null: this set has no evidence passage."
+    },
+    "hint": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "First half of the reference solution's sentences, without the boxed answer; null when the solution has fewer than 2 such sentences. Used only by the Objective 2 reasoning intervention."
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "level",
+        "subject"
+      ],
+      "properties": {
+        "level": {
+          "type": "string",
+          "description": "Difficulty level, from Level 1 (easiest) to Level 5.",
+          "enum": [
+            "Level 1",
+            "Level 2",
+            "Level 3",
+            "Level 4",
+            "Level 5"
+          ]
+        },
+        "subject": {
+          "type": "string",
+          "description": "MATH subject of the problem."
+        }
+      },
+      "description": "Extra fields kept from the source dataset (for strata and analysis)."
+    }
+  },
+  "examples": [
+    {
+      "id": "math-prealgebra-604",
+      "set": "math",
+      "kind": "expr",
+      "question": "What is $(7^{-1})^{-1}$?",
+      "answers": [
+        "7"
+      ],
+      "split": "dev",
+      "core": false,
+      "judge_mode": "match",
+      "incorrect_answers": [],
+      "gold_type": null,
+      "evidence": null,
+      "hint": null,
+      "meta": {
+        "level": "Level 1",
+        "subject": "prealgebra"
+      }
+    }
+  ]
+}

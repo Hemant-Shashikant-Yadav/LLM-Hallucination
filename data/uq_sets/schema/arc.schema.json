@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ARC-Challenge question record (uncertainty study)",
+  "description": "One question of the ARC-Challenge set (science multiple choice) used by thesis Objectives 1-2. Mirrors the Item dataclass in uncertainty/sets/load.py.",
+  "x-file": "data/uq_sets/arc.jsonl",
+  "x-format": "JSON Lines: one JSON object per line, each matching this schema",
+  "x-records": 200,
+  "x-source": "allenai/ai2_arc (ARC-Challenge, test)",
+  "x-revision": "210d026faf9955653af8916fad021475a3f00453",
+  "x-license": "CC BY-SA 4.0",
+  "x-sha256": "784f87cf66ebc92d1333516b58c85e0464b1d5bb68a61cc6694b183df932db0c",
+  "x-note": "Documentation only: no code reads this schema.",
+  "type": "object",
+  "required": [
+    "id",
+    "set",
+    "kind",
+    "question",
+    "answers",
+    "split",
+    "core",
+    "judge_mode",
+    "incorrect_answers",
+    "gold_type",
+    "evidence",
+    "hint",
+    "meta"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique question id in this set: 'arc-' + the source dataset's own id.",
+      "pattern": "^arc-"
+    },
+    "set": {
+      "type": "string",
+      "const": "arc",
+      "description": "Name of the question set: always 'arc'."
+    },
+    "kind": {
+      "type": "string",
+      "const": "choice",
+      "description": "Answer kind 'choice': one option letter, read and graded by rules."
+    },
+    "question": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The question followed by its four options, one per line, as (a) to (d)."
+    },
+    "answers": {
+      "type": "array",
+      "description": "The correct option letter, 'a' to 'd' (one item).",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "maxItems": 1
+    },
+    "split": {
+      "type": "string",
+      "enum": [
+        "dev",
+        "test"
+      ],
+      "description": "Fixed, seeded split: dev (30%) only tunes thresholds and trains the Objective 2 models; every reported number uses test (70%)."
+    },
+    "core": {
+      "type": "boolean",
+      "description": "true if the question is in the core tier, the subset every model answers; the file itself is the extended tier."
+    },
+    "judge_mode": {
+      "type": "string",
+      "enum": [
+        "match"
+      ],
+      "description": "How the LLM judge grades a free-text answer: match (agrees with a reference answer), truthfulqa (TruthfulQA judge prompt), abstain (correct only if it says the question cannot be answered), premise (correct only if it rejects the false premise). Unused for rule-graded kinds."
+    },
+    "incorrect_answers": {
+      "type": "array",
+      "description": "Known false answers from the dataset (TruthfulQA only; empty elsewhere).",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 0,
+      "maxItems": 0
+    },
+    "gold_type": {
+      "type": "null",
+      "description": "Always null: the dataset gives no uncertainty type for these questions."
+    },
+    "evidence": {
+      "type": "null",
+      "description": "Always null: this set has no evidence passage."
+    },
+    "hint": {
+      "type": "null",
+      "description": "Always null: this set has no hint."
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {},
+      "description": "No extra fields in this set (always an empty object)."
+    }
+  },
+  "examples": [
+    {
+      "id": "arc-MEA_2011_8_19",
+      "set": "arc",
+      "kind": "choice",
+      "question": "Which of the following is made of atoms?\n(a) gravity\n(b) light\n(c) heat\n(d) air",
+      "answers": [
+        "d"
+      ],
+      "split": "dev",
+      "core": false,
+      "judge_mode": "match",
+      "incorrect_answers": [],
+      "gold_type": null,
+      "evidence": null,
+      "hint": null,
+      "meta": {}
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MATH test split (full) record (pipeline evaluation)",
+  "description": "One problem of MATH test split (full), frozen for the pipeline's evaluation (thesis Objectives 3-4).",
+  "x-file": "data/eval_sets/full/math_test.jsonl",
+  "x-format": "JSON Lines: one JSON object per line, each matching this schema",
+  "x-records": 5000,
+  "x-source": "EleutherAI/hendrycks_math (all 7 subjects)",
+  "x-revision": "21a5633873b6a120296cce3e2df9d5550074f4a3",
+  "x-license": "MIT",
+  "x-sha256": "14cd352ece0bf258e550f4225651845a9a88600b879e0a35d81496e20ba4a198",
+  "x-note": "Documentation only: no code reads this schema.",
+  "type": "object",
+  "required": [
+    "id",
+    "subject",
+    "level",
+    "question",
+    "kind",
+    "key",
+    "solution"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^math-",
+      "description": "Problem id: 'math-' + subject + '-' + the problem's index within that subject."
+    },
+    "subject": {
+      "type": "string",
+      "description": "MATH subject of the problem.",
+      "enum": [
+        "algebra",
+        "counting_and_probability",
+        "geometry",
+        "intermediate_algebra",
+        "number_theory",
+        "prealgebra",
+        "precalculus"
+      ]
+    },
+    "level": {
+      "type": "string",
+      "description": "Difficulty level, from Level 1 (easiest) to Level 5.",
+      "enum": [
+        "Level 1",
+        "Level 2",
+        "Level 3",
+        "Level 4",
+        "Level 5"
+      ]
+    },
+    "question": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The problem statement in LaTeX."
+    },
+    "kind": {
+      "type": "string",
+      "const": "expr",
+      "description": "Answer kind: always 'expr' (a maths expression read by rules)."
+    },
+    "key": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Final answer: the last \\boxed{} expression of the reference solution."
+    },
+    "solution": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Full reference solution in LaTeX."
+    }
+  },
+  "examples": [
+    {
+      "id": "math-algebra-4",
+      "subject": "algebra",
+      "level": "Level 1",
+      "question": "If $2^8=4^x$, what is the value of $x$?",
+      "kind": "expr",
+      "key": "4",
+      "solution": "Rewrite $4$ as $2^2$ to find $4^x=2^{2x}$.  Since $2^8=2^{2x}$, we have $2x=8$ which implies $x=\\boxed{4}$."
+    }
+  ]
+}

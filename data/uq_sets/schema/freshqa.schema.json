@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FreshQA question record (uncertainty study)",
+  "description": "One question of the FreshQA set (changing facts and false premises) used by thesis Objectives 1-2. Mirrors the Item dataclass in uncertainty/sets/load.py.",
+  "x-file": "data/uq_sets/freshqa.jsonl",
+  "x-format": "JSON Lines: one JSON object per line, each matching this schema",
+  "x-records": 200,
+  "x-source": "bojanbabic/freshqa_09302025 (FreshQA snapshot of 2025-09-30, test)",
+  "x-revision": "ae293206abcacde7a86ee2251a1909e8b0e7edb8",
+  "x-license": "Apache-2.0 (FreshLLMs)",
+  "x-sha256": "46403e552926b2f8e329bfe7f06868224c97186d1515b5fe51241d7aa3d5915c",
+  "x-note": "Documentation only: no code reads this schema.",
+  "type": "object",
+  "required": [
+    "id",
+    "set",
+    "kind",
+    "question",
+    "answers",
+    "split",
+    "core",
+    "judge_mode",
+    "incorrect_answers",
+    "gold_type",
+    "evidence",
+    "hint",
+    "meta"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique question id in this set: 'fresh-' + the source dataset's own id.",
+      "pattern": "^fresh-"
+    },
+    "set": {
+      "type": "string",
+      "const": "freshqa",
+      "description": "Name of the question set: always 'freshqa'."
+    },
+    "kind": {
+      "type": "string",
+      "const": "short",
+      "description": "Answer kind 'short': free-text answer, graded by an LLM judge from another model family."
+    },
+    "question": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The question as sent to the model."
+    },
+    "answers": {
+      "type": "array",
+      "description": "Reference answers as of the 2025-09-30 snapshot; for false-premise questions they correct the premise.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "maxItems": 10
+    },
+    "split": {
+      "type": "string",
+      "enum": [
+        "dev",
+        "test"
+      ],
+      "description": "Fixed, seeded split: dev (30%) only tunes thresholds and trains the Objective 2 models; every reported number uses test (70%)."
+    },
+    "core": {
+      "type": "boolean",
+      "description": "true if the question is in the core tier, the subset every model answers; the file itself is the extended tier."
+    },
+    "judge_mode": {
+      "type": "string",
+      "enum": [
+        "match",
+        "premise"
+      ],
+      "description": "How the LLM judge grades a free-text answer: match (agrees with a reference answer), truthfulqa (TruthfulQA judge prompt), abstain (correct only if it says the question cannot be answered), premise (correct only if it rejects the false premise). Unused for rule-graded kinds."
+    },
+    "incorrect_answers": {
+      "type": "array",
+      "description": "Known false answers from the dataset (TruthfulQA only; empty elsewhere).",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 0,
+      "maxItems": 0
+    },
+    "gold_type": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Uncertainty type the dataset itself guarantees (ambiguous, unanswerable, false_premise or temporal); null when it gives none.",
+      "enum": [
+        "false_premise",
+        "temporal",
+        null
+      ]
+    },
+    "evidence": {
+      "type": "null",
+      "description": "Always null: this set has no evidence passage."
+    },
+    "hint": {
+      "type": "null",
+      "description": "Always null: this set has no hint."
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fact_type",
+        "false_premise",
+        "effective_year",
+        "num_hops",
+        "snapshot"
+      ],
+      "properties": {
+        "fact_type": {
+          "type": "string",
+          "description": "How often the answer changes.",
+          "enum": [
+            "fast-changing",
+            "never-changing",
+            "slow-changing"
+          ]
+        },
+        "false_premise": {
+          "type": "boolean",
+          "description": "true if the question rests on a false premise."
+        },
+        "effective_year": {
+          "type": "string",
+          "description": "Since when the current answer holds, as given by FreshQA (for example 'before 2022' or '2024')."
+        },
+        "num_hops": {
+          "type": "string",
+          "description": "Whether the question needs one fact or several.",
+          "enum": [
+            "multi-hop",
+            "one-hop"
+          ]
+        },
+        "snapshot": {
+          "type": "string",
+          "const": "2025-09-30",
+          "description": "Date of the FreshQA snapshot the answers come from."
+        }
+      },
+      "description": "Extra fields kept from the source dataset (for strata and analysis)."
+    }
+  },
+  "examples": [
+    {
+      "id": "fresh-30",
+      "set": "freshqa",
+      "kind": "short",
+      "question": "When did Yann LeCun join Google?",
+      "answers": [
+        "Yann has never ever joined Google."
+      ],
+      "split": "dev",
+      "core": false,
+      "judge_mode": "premise",
+      "incorrect_answers": [],
+      "gold_type": "false_premise",
+      "evidence": null,
+      "hint": null,
+      "meta": {
+        "fact_type": "slow-changing",
+        "false_premise": true,
+        "effective_year": "before 2022",
+        "num_hops": "one-hop",
+        "snapshot": "2025-09-30"
+      }
+    }
+  ]
+}
