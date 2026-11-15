@@ -375,16 +375,21 @@ ORDER += [TPL[2], TPL[3]]
 
 # 5. Literature review
 s = new_slide("Literature Review", "How uncertainty is measured today")
+def cited(name, refs):
+    """A table cell 'Approach [n]': research-paper citation markers, numbered as on the References slide."""
+    return [[(name + " ", {}), (refs, {"color": BLUE})]]
+
+
 rows = [["Approach", "Key idea", "Limitation"],
-        ["Semantic entropy (Kuhn 2023; Farquhar 2024)", "Sample several answers, group by meaning; more groups = less sure",
+        [cited("Semantic entropy", "[1], [2]"), "Sample several answers, group by meaning; more groups = less sure",
          "Needs 5–10 answers; misses errors made while sure"],
-        ["Graph methods (Lin 2024)", "Treat the answers as a similarity graph", "Same sampling cost"],
-        ["Token probability (Malinin & Gales 2021)", "Low word probability = unsure",
-         "Mixes up wording with doubt"],
-        ["Self-evaluation (Kadavath 2022; Tian 2023)", "Ask the model to rate its own answer",
+        [cited("Graph methods", "[3]"), "Treat the answers as a similarity graph", "Same sampling cost"],
+        [cited("Token probability", "[4]"), "Low word probability = unsure", "Mixes up wording with doubt"],
+        [cited("Self-evaluation", "[5]–[7]"), "Ask the model to rate its own answer",
          "Small models are over-confident"],
-        ["Consistency checks (Manakul 2023)", "Compare each sentence with other answers", "Slow for long answers"],
-        ["Uncertainty types (Hou 2024; Yadkori 2024)", "Separate “does not know” from “question is unclear”",
+        [cited("Consistency checks", "[8], [11]"), "Compare each answer with the other answers",
+         "Slow for long answers"],
+        [cited("Uncertainty types", "[9], [10]"), "Separate “does not know” from “question is unclear”",
          "Not linked to a fix"]]
 table(s, 0.5, 1.02, 8.95, [2.75, 3.4, 2.8], rows, row_h=0.43, size=10.5, bold_first_col=True)
 box(s, 0.72, 4.18, 8.5, 0.6, fill=TINT, line=TINT_LINE,
@@ -657,18 +662,56 @@ GROUP_NOTES = {
                                       "Accuracy is lowest here and entropy is weaker: models often give the same "
                                       "wrong answer every time, so sampling alone misses it. This is why Objective 2 "
                                       "classifies the type."}
+HIGH, LOW = "15803D", "B91C1C"  # highest / lowest value of a dataset across the models
+FORMATS = (lambda x: f"{x:.0%}", lambda x: f"{x:.2f}")  # accuracy, AUROC: as shown, so ties are what the eye sees
+
+
+def marked_cell(texts, highs, lows):
+    """One table cell 'a, b, c, d' as runs: each dataset's highest value green, its lowest red (ties all marked)."""
+    runs = []
+    for j, t in enumerate(texts):
+        if j:
+            runs.append((", ", {}))
+        style = {"bold": True, "color": HIGH} if t == highs[j] else {"bold": True, "color": LOW} if t == lows[j] else {}
+        runs.append((t, style))
+    return [runs]
+
+
+def auroc_panel(slide, x, y, w):
+    """What AUROC stands for and means, and what the table's colours mean."""
+    box(slide, x, y, w, 2.42, fill=TINT, line=TINT_LINE, anchor=MSO_ANCHOR.TOP, margin=0.14, space_after=4, paras=[
+        [("What is AUROC?", {"size": 12, "bold": True, "color": BLUE})],
+        [("Area Under the Receiver Operating Characteristic curve.", {"italic": True, "color": SLATE})],
+        "Here: the chance that a wrong answer gets a higher semantic entropy (looks less sure) than a right answer.",
+        [("0.5 = guessing  ·  1.0 = perfect", {"bold": True, "color": NAVY})],
+        "Example: 0.80 → in 8 of 10 pairs of one wrong and one right answer, the wrong one looks less sure."],
+        size=9.5)
+    box(slide, x, y + 2.54, w, 0.97, fill=WHITE, line=RULE, anchor=MSO_ANCHOR.TOP, margin=0.14, space_after=2, paras=[
+        [("Colours (per dataset)", {"size": 10, "bold": True})],
+        [("Green", {"bold": True, "color": HIGH}), (" = highest of the 12 models", {})],
+        [("Red", {"bold": True, "color": LOW}), (" = lowest of the 12 models", {})],
+        [("Ties are all marked.", {"size": 8.5, "italic": True, "color": SLATE})]], size=9.5)
+
+
 for k, (group, sets) in enumerate(GROUPS, start=1):
     s = new_slide(f"Results: Baseline Uncertainty per Model ({k}/3)",
                   f"{group}: accuracy and semantic-entropy AUROC for every model")
     names = ", ".join(sets)
-    rows = [["Model", "Datasets", "Accuracy", "AUROC (semantic entropy)"]]
+    shown = {m: [[FORMATS[i](EXP[m, d][i]) for d in sets] for i in (0, 1)] for m, _, _ in MODELS}
+    rows = [["Model", "Datasets", "Accuracy", "AUROC"]]
+    extremes = []
+    for i in (0, 1):  # per metric and dataset: the highest and lowest shown value
+        vals = [[EXP[m, d][i] for m, _, _ in MODELS] for d in sets]
+        extremes.append(([FORMATS[i](max(v)) for v in vals], [FORMATS[i](min(v)) for v in vals]))
     for model, _, _ in MODELS:
-        v = [EXP[model, d] for d in sets]
-        rows.append([model, names, ", ".join(f"{x[0]:.0%}" for x in v), ", ".join(f"{x[1]:.2f}" for x in v)])
-    table(s, 0.6, 1.0, 8.8, [1.4, 3.0, 2.0, 2.4], rows, row_h=0.27, size=8.5, bold_first_col=True)
-    basis_note(s, 4.66, "Cells follow the Datasets order; AUROC 0.5 = guessing, 1 = perfect." + REAL_NOTE.get(group, ""))
-    notes(s, GROUP_NOTES[group] + (" These are expected values from published results, not yet measured in this "
-                                   "study." if EXPECTED else ""))
+        rows.append([model, names] + [marked_cell(shown[model][i], *extremes[i]) for i in (0, 1)])
+    table(s, 0.6, 1.0, 6.0, [1.05, 2.3, 1.32, 1.33], rows, row_h=0.27, size=8.5, bold_first_col=True)
+    auroc_panel(s, 6.8, 1.0, 2.6)
+    basis_note(s, 4.66, "Cells follow the Datasets order." + REAL_NOTE.get(group, ""))
+    notes(s, GROUP_NOTES[group] + " For each dataset, green marks the highest value of the 12 models and red the "
+             "lowest. AUROC, the area under the receiver operating characteristic curve, is the chance that a wrong "
+             "answer gets a higher semantic entropy than a right one: 0.5 is guessing, 1 is perfect."
+          + (" These are expected values from published results, not yet measured in this study." if EXPECTED else ""))
     ORDER.append(s)
 
 # 17. Results: maths vs myths across every model, and what is already verified

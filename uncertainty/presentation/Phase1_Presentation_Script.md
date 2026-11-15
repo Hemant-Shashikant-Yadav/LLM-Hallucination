@@ -54,16 +54,16 @@ Errors also come in different kinds. If the model does not know a fact, it needs
 
 ### Slide 5: Literature Review (≈ 1.5 min)
 
-**On the slide:** a table of six approaches (key idea and limitation) and a summary box.
+**On the slide:** a table of six approaches (key idea and limitation) and a summary box. Each approach carries numbered citation markers in blue, as in a research paper ([1], [2] …); the numbers match the References slide (slide 20). Self-evaluation is [5]–[7] (P(True) [5], verbalised confidence [6], [7]); consistency checks are SelfCheckGPT [8] and self-consistency [11].
 
 **Say:**
-"This table shows how uncertainty is measured today.
+"This table shows how uncertainty is measured today. The numbers in brackets point to the papers on the References slide at the end.
 
 - **Semantic entropy**, by Kuhn and by Farquhar, published in Nature in 2024, is the best-known method. We ask the same question several times and check whether the answers agree in meaning. Its limits: it needs five to ten answers, and it misses errors the model makes while it is sure.
 - **Graph methods**, by Lin and colleagues, treat the answers as a similarity graph. They have the same sampling cost.
 - **Token probability** methods look at how likely each word was. Low probability means unsure. But they mix up wording with doubt: a rare word gets a low probability even when the fact is right.
 - **Self-evaluation** asks the model to rate its own answer. Small models tend to be over-confident.
-- **SelfCheckGPT** compares each sentence with the other answers. It is slow for long answers.
+- **Consistency checks**, such as SelfCheckGPT, compare each answer with the other answers. They are slow for long answers.
 - Newer work, by Hou and by Abbasi-Yadkori, separates *'the model does not know'* from *'the question is unclear'*. But it does not link the kind of doubt to a fix.
 
 In short, most work gives one uncertainty number, on a few models, and does not say what kind of doubt it is."
@@ -222,34 +222,67 @@ There are four metrics:
 
 ### Slide 14: Results: Baseline Uncertainty per Model (1/3), facts and myths (≈ 1.5 min)
 
-**On the slide:** a table with one row per model. Each cell lists values in the order of the Datasets column. Marked "EXPECTED VALUES".
+**On the slide:** a table with one row per model. Each cell lists values in the order of the Datasets column. For each dataset, the highest value of the 12 models is in bold green and the lowest in bold red, separately for Accuracy and AUROC (ties are all marked). A panel on the right explains AUROC (Area Under the Receiver Operating Characteristic curve) and the colours. Marked "EXPECTED VALUES". Slides 15 and 16 have the same layout.
+
+**Point at:** the "EXPECTED VALUES" tag, then the Datasets column, then the qwen2.5:3b row, then the "What is AUROC?" panel.
 
 **Say:**
-"These three slides show the main Objective 1 table: one row for each of the 12 models. **These are expected values, not yet our measurements.** Accuracy comes from published benchmark scores where they exist, and AUROC from published semantic-entropy results. The full run on the Mac will replace them with measured values. The accuracy and AUROC of qwen2.5:3b and llama2:7b on TruthfulQA are already real, from our earlier runs.
+"Now the results. The next three slides show the main table for Objective 1: one row for each of our 12 models, and one slide per group of datasets.
 
-How to read a row: the Datasets column gives the order, and every other cell follows that order.
-- **Accuracy:** the share of answers that are right.
-- **AUROC of semantic entropy:** how well entropy separates wrong answers from right ones. 0.5 is guessing and 1 is perfect.
+First, one thing to be clear about. The cells marked *expected values* are not our measurements yet. Accuracy comes from published benchmarks, and AUROC comes from published semantic-entropy results. They are what we expect, and our full run will confirm or correct them. Two models already have real numbers from our earlier runs: qwen2.5:3b and llama2:7b, on TruthfulQA here and on GSM8K on the next slide.
 
-This slide covers facts and myths. Fact questions are expected to give a useful AUROC, around 0.75 to 0.8, which is the level reported in the Nature paper. TruthfulQA stays near 0.5, and our real cells confirm it: 0.55 for qwen2.5:3b and 0.58 for llama2:7b. PopQA accuracy is low for every model because it asks about rare facts; published work shows small models answer only about one in five such questions."
+How to read the table: the Datasets column gives the order (TriviaQA, PopQA, HaluEval, TruthfulQA), and the Accuracy and AUROC cells follow that order.
+- **Accuracy:** the share of right answers.
+- **AUROC of semantic entropy:** AUROC stands for *Area Under the Receiver Operating Characteristic curve*. Here it is the chance that a wrong answer gets a higher semantic entropy, so it looks less sure, than a right answer. 0.5 means guessing, 1 means perfect. For example, 0.80 means that in 8 of 10 pairs of one wrong and one right answer, the wrong one looks less sure.
+
+The colours make the extremes easy to see: for each dataset, green is the best of the 12 models and red the worst.
+
+There are three things to notice.
+- **First,** on the fact datasets, AUROC is about 0.72 to 0.82 for every model. That is the level the Nature paper reports, so entropy is a useful warning signal here.
+- **Second,** PopQA accuracy is low for every model, only 15 to 28 percent, because it asks about rare facts. Its AUROC stays high, around 0.77, because when the model doesn't know, it shows it by giving different answers each time.
+- **Third,** TruthfulQA is the exception. Accuracy is fine, about 66 percent, but AUROC is only about 0.57 for every model, close to guessing. Our real cells agree: 0.55 for qwen2.5:3b and 0.58 for llama2:7b. A myth is learned firmly, so the model repeats the same wrong answer every time, and entropy sees no doubt."
 
 **If asked:**
-- *Where do these numbers come from?* Published model benchmarks and the semantic-entropy papers; Part D of my notes lists every source. The full run replaces them with our own measurements.
-- *Where is the blind spot?* No paper reports it for these models, so it will be added from the full run.
+- *Where do the numbers come from?* Published model benchmarks and semantic-entropy papers; all sources are in Part D of my notes. The full run replaces them.
+- *Where do the real cells come from?* From the pipeline's first layer on 100 stored test questions each. That setting used 4 samples at temperature 0.7, while the study uses 10 at temperature 1, so the setting is close but not identical.
+- *Why is there no blind-spot column?* No paper reports it for these models. It is added from our own run.
+- *Why are the green and red AUROC values always the same models?* In the expected values, AUROC is set per dataset from published results and only nudged slightly (±0.02) by model strength, so the strongest models (qwen2.5:14b, phi4) come out highest and llama2:7b lowest. That ordering is an assumption, not a finding; the full run will show the real ordering. The accuracy colours rest on published benchmark scores.
 
 ---
 
 ### Slide 15: Results (2/3), reasoning (≈ 1 min)
 
+**On the slide:** the same layout as slide 14: green = highest and red = lowest of the 12 models per dataset, and the AUROC panel on the right.
+
+**Point at:** the GSM8K values in the qwen2.5:3b row and the llama2:7b row (the red row: lowest on every reasoning dataset).
+
 **Say:**
-"This is the reasoning group: GSM8K, MATH, StrategyQA and ARC. The values are expected from published results, except qwen2.5:3b and llama2:7b on GSM8K, which are real. For example, qwen2.5:3b answers 84% of GSM8K questions correctly in our run, and entropy separates its wrong answers well, with AUROC 0.86. Published maths scores show the same ordering we expect: newer and larger models do much better, from 24% for llama2:7b up to about 95% for qwen2.5:14b. Maths gives the clearest signal: when the model is wrong, its ten answers scatter over different numbers, so entropy is high."
+"The second group is reasoning: GSM8K, MATH, StrategyQA and ARC.
+
+Accuracy here depends most on the model. On GSM8K it goes from 24 percent for llama2:7b, the oldest model, to 95 percent for qwen2.5:14b. Inside each family, larger and newer models do better.
+
+AUROC is the highest of the whole study here: about 0.83 on GSM8K and 0.80 on MATH. Our real cell for qwen2.5:3b is 84 percent accuracy with AUROC 0.86. When a model makes a maths mistake, its ten answers land on different numbers. So entropy is high and the error is caught.
+
+Look at llama2:7b. It is right only 24 percent of the time, yet its real AUROC is 0.79. Being wrong often does not stop entropy from finding the errors, because AUROC measures ranking, not accuracy.
+
+StrategyQA is lower, about 0.66, because its questions are yes-or-no. With only two possible answers, a wrong model can agree with itself by chance."
 
 ---
 
 ### Slide 16: Results (3/3), unclear and changing questions (≈ 1 min)
 
+**On the slide:** the same layout as slide 14: green = highest and red = lowest of the 12 models per dataset, and the AUROC panel on the right.
+
+**Point at:** the FreshQA values (the last value in each cell).
+
 **Say:**
-"The last group is AmbigQA, SelfAware and FreshQA: ambiguous, unanswerable and time-dependent questions. All values here are expected values. These are the hardest questions: accuracy is lowest and entropy is weaker, because a model often gives the same wrong answer every time, for example an outdated fact. Its samples agree, so entropy says 'sure'. That is exactly why Objective 2 does not stop at *how* unsure the model is but asks *what kind* of doubt it is."
+"The last group is the hardest: AmbigQA has ambiguous questions, SelfAware has unanswerable ones, and FreshQA has facts that change over time and questions with false premises.
+
+Accuracy is the lowest here: on average about 26 percent on FreshQA, 33 on AmbigQA and 44 on SelfAware. AUROC is also weaker, only 0.62 to 0.65.
+
+The reason is that these are not gaps the model can *feel*. With an outdated fact, it gives the same old answer ten times. With an unanswerable question, it confidently makes something up. Its samples agree, so entropy says 'sure', even though the answer is wrong.
+
+So measuring *how* unsure a model is is not enough. We also need to know *what kind* of doubt it is, and that is exactly what Objective 2 does."
 
 ---
 
@@ -257,15 +290,26 @@ This slide covers facts and myths. Fact questions are expected to give a useful 
 
 **On the slide:** a bar chart of AUROC on GSM8K and TruthfulQA for all 12 models, three summary boxes, and a green "Ready to run" strip. Marked "EXPECTED VALUES".
 
+**Point at:** the blue and amber bar pairs, then the three summary boxes, then the green strip.
+
 **Say:**
-"This chart puts maths and myths side by side for every model. The bars are expected values from published results, except qwen2.5:3b and llama2:7b, which are real: 0.86 and 0.79 on maths, against 0.55 and 0.58 on myths.
+"This chart puts the two extremes side by side for all 12 models. The blue bars are maths (GSM8K) and the amber bars are myths (TruthfulQA).
 
-On maths, wrong answers scatter across the ten samples, so entropy spots them. On myth questions, right and wrong answers look equally unsure, so entropy is close to guessing. The boxes summarise the chart: about 0.83 on maths against 0.57 on myths, and entropy is expected to work better on maths for every model.
+We expect an average AUROC of 0.83 on maths against 0.57 on myths, with all 12 models better on maths. Two of these pairs are already real: qwen2.5:3b with 0.86 against 0.55, and llama2:7b with 0.79 against 0.58. Both show the same gap.
 
-The green strip shows what is already verified, using a dry run with a simulated model. Every one of the 6 stages finished for 12 models. After a simulated crash, only the 5 missing questions out of 30 were redone. Over 80% of the planted types were recovered. So the full study is ready to run."
+Our hypothesis is that the gap depends on the *type of question*, not on the model. On maths, wrong answers scatter, so entropy sees the doubt. On myths, the model is firmly wrong, so entropy cannot see it. The full run will test whether this holds for every model.
+
+The green strip shows what is already verified. We ran the whole study with a simulated model. All 6 stages finished for 12 models. After a simulated crash, only the 5 missing questions out of 30 were redone. More than 80 percent of the planted uncertainty types were recovered. So the code is ready; what remains is the compute time to run the real models."
+
+**Transition:** "So what do these results mean, and what are their limits? That's the next slide."
 
 **If asked:**
-- *What is a simulated model?* A stand-in that answers instantly with known, planted kinds of uncertainty. It proves the code works end to end; its numbers say nothing about real models, so they are never reported as results.
+- *What is a simulated model?* A stand-in that answers instantly with known, planted kinds of uncertainty. It proves the code works end to end, but its numbers say nothing about real models, so they are never reported as results.
+- *When will the real numbers come?* From the Colab run: 20 questions per dataset for all 12 models, about 10 hours on a free T4 GPU. Then these slides are rebuilt with measured values.
+
+**Delivery tips for slides 14–17:**
+- **Don't read numbers aloud.** On each table, follow one row (qwen2.5:3b) and one pattern (the column that stands out), and leave the rest on the slide.
+- **Keep the wording consistent.** Say "expected" for the published-based values and "real" or "measured" only for the four cells from the earlier runs.
 
 ---
 
