@@ -3,7 +3,7 @@
 Companion to [Phase1_Uncertainty_Study.pptx](Phase1_Uncertainty_Study.pptx) (22 slides). It has four parts:
 
 - **Part A: slide-by-slide script.** What is on each slide, what to say, and short answers to likely panel questions.
-- **Part B: formulas and methods in detail.** Every formula behind the slides, explained in plain words with a small worked example, and matched to the code in `uncertainty/`.
+- **Part B: formulas and methods in detail.** Every formula behind the slides, explained in plain words with a small worked example, and matched to the code in `uncertainty/`. A simpler version, with one running example for all 17 methods, is in [Formulas_in_Simple_Words.md](Formulas_in_Simple_Words.md).
 - **Part C: quick glossary.** One line per term, for when you get stuck.
 - **Part D: where the expected values come from.** Every published number behind the result slides, with links.
 
