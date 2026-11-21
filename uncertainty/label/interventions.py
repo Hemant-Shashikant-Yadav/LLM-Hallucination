@@ -31,7 +31,7 @@ from uncertainty.generate.runner import max_tokens_for
 from uncertainty.label.correctness import grade_text
 from uncertainty.label.judge import Judge, gather_chunked
 from uncertainty.methods.nli import nli_matrix, nli_texts
-from uncertainty.methods.semantic_entropy import se_normalized
+from uncertainty.methods import se_normalized
 from uncertainty.methods.view import View
 from uncertainty.answers import cluster_keys, read_answer
 from uncertainty.roster import spec

@@ -8,7 +8,7 @@ This guide explains every formula and calculation in the uncertainty study (thes
 - **a worked example**, step by step;
 - **how to read the result**, and where it is in the code.
 
-All examples use **one question**, so you can compare the methods with each other. The example numbers are made up for teaching, but every result was computed with the study's own code (`uncertainty/methods/` and `uncertainty/metrics.py`). So this guide and the code agree.
+All examples use **one question**, so you can compare the methods with each other. The example numbers are made up for teaching, but every result was computed with the study's own code (`uncertainty/methods/`, one file per method, and `uncertainty/metrics.py`). So this guide and the code agree.
 
 For the longer, more technical version, see Part B of [Phase1_Presentation_Script.md](Phase1_Presentation_Script.md).
 
@@ -148,7 +148,7 @@ SE_norm = SE ÷ ln m          (always between 0 and 1)
 
 Example: 0.611 ÷ ln 10 = 0.611 ÷ 2.303 = **0.265**. Dividing by the maximum makes 0 = all agree and 1 = all different, whatever the number of samples.
 
-Code: `semantic_entropy.py` → `se_discrete`, `se_normalized`.
+Code: `methods/01_semantic_entropy.py` → `se_discrete`, `se_normalized`.
 
 #### 2. Semantic entropy (weighted)
 
@@ -174,7 +174,7 @@ SE_w  = − Σ  P(c) × ln P(c)
 
 **How to read it:** lower than the 0.611 of method 1, because the model itself found "Sydney" unlikely. So the doubt is smaller than plain counting suggests.
 
-Code: `semantic_entropy.py` → `se_weighted`.
+Code: `methods/02_semantic_entropy_weighted.py` → `se_weighted`.
 
 #### 3. Semantic entropy (pipeline version)
 
@@ -197,7 +197,7 @@ SE_pipe = [ − Σ (n_c ÷ n) × ln(n_c ÷ n) ]  ÷  ln n
 
 The study also computes it with only **4 samples**, because that is what the pipeline really uses. Fewer samples give a rougher estimate.
 
-Code: `semantic_entropy.py` → `se_pipeline`.
+Code: `methods/03_semantic_entropy_pipeline.py` → `se_pipeline`.
 
 #### 4. Number of meaning groups
 
@@ -211,7 +211,7 @@ Groups = number of different meaning groups among the samples
 
 **How to read it:** 1 = all agree. Simple, but rough: a 9-and-1 split and a 5-and-5 split both give 2.
 
-Code: `semantic_entropy.py` → `num_clusters`.
+Code: `methods/04_number_of_meaning_groups.py` → `num_clusters`.
 
 #### 5–7. The graph methods: EigV, Degree, Eccentricity
 
@@ -282,7 +282,7 @@ The computer places each answer as a point on a small map, so that similar answe
 | 5, 3 and 2 | 3 | 2.96 | 0.62 | 1.41 |
 | all different | 10 | 8.47 | 0.88 | 3.00 |
 
-Code: `graph.py` → `eigv`, `degree`, `eccentricity`.
+Code: `methods/05_spectral_eigv.py`, `06_spectral_degree.py`, `07_spectral_eccentricity.py`.
 
 #### 8. Disagreement with the main answer
 
@@ -296,7 +296,7 @@ Disagree = 1 − (samples that mean the same as the greedy answer) ÷ m
 
 **How to read it:** 0 = every sample backs the main answer; 1 = none does.
 
-Code: `consistency.py` → `disagree_greedy`.
+Code: `methods/08_disagreement_with_greedy.py` → `disagree_greedy`.
 
 #### 9. SelfCheckGPT-NLI
 
@@ -316,7 +316,7 @@ SelfCheck = (7 × 0.02 + 3 × 0.95) ÷ 10 = (0.14 + 2.85) ÷ 10 = **0.299**.
 
 **How to read it:** close to 0 = the samples support the answer; close to 1 = they contradict it. Only for text answers (it needs the NLI model).
 
-Code: `consistency.py` → `selfcheck_nli`.
+Code: `methods/09_selfcheck_nli.py` → `selfcheck_nli`.
 
 ### Family B: the model's own word probabilities
 
@@ -347,7 +347,7 @@ NLL_norm = NLL ÷ L          (L = number of tokens)
 
 **Example:** 0.167 ÷ 3 = **0.056**.
 
-Code: `token_level.py` → `nll`, `nll_norm`.
+Code: `methods/10_sequence_nll.py` → `nll`, `methods/11_length_normalised_nll.py` → `nll_norm`.
 
 #### 12–13. Token entropy (mean and max)
 
@@ -371,7 +371,7 @@ Mean = (0.392 + 0.199 + 0.056) ÷ 3 = **0.216**. Max = **0.392** (spot 1, where 
 
 **How to read it:** 0 = no doubt at any word. The max points to the most doubtful word. Because Ollama shows only the top few choices, this is a slight under-estimate.
 
-Code: `token_level.py` → `token_entropy_mean`, `token_entropy_max`.
+Code: `methods/12_token_entropy_mean.py`, `methods/13_token_entropy_max.py`.
 
 #### 14. Predictive entropy
 
@@ -385,7 +385,7 @@ PE = − (average over the samples of each sample's average log-probability)
 
 **How to read it:** higher = the samples were less likely. **Problem:** "Canberra" and "The capital is Canberra" have different probabilities but the same meaning. So this mixes up *wording* with *doubt*. Semantic entropy fixes exactly this.
 
-Code: `token_level.py` → `predictive_entropy`.
+Code: `methods/14_predictive_entropy.py` → `predictive_entropy`.
 
 ### Family C: word overlap
 
@@ -412,7 +412,7 @@ LexSim = 1 − (average F1 over every pair of samples)
 
 **The trap:** "the capital is Canberra" and "Canberra is the capital" share only "the capital" in the same order, so F1 = **0.5**, although the meaning is identical. Word overlap misses paraphrases.
 
-Code: `consistency.py` → `lexical_sim`.
+Code: `methods/15_lexical_similarity.py` → `lexical_sim`.
 
 ### Family D: self-evaluation (ask the model)
 
@@ -442,7 +442,7 @@ uncertainty = 1 − confidence
 
 **How to read them:** easy to understand, but small models often say "90" even when they are wrong. That is why we also check calibration (Part 2).
 
-Code: `self_eval.py`.
+Code: `methods/16_p_true.py`, `methods/17_verbalised_confidence.py`.
 
 ### All 17 on the running example
 

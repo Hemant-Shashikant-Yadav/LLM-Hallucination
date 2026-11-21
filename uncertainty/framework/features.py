@@ -20,7 +20,7 @@ from itertools import combinations
 import numpy as np
 
 from app.answer_utils import classify_task_heuristic, strip_options
-from uncertainty.methods.semantic_entropy import mean_logprob
+from uncertainty.methods import mean_logprob
 from uncertainty.methods.view import View
 from uncertainty.sets.load import KINDS
 

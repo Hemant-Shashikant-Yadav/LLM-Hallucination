@@ -112,7 +112,7 @@ pipeline's budget (4 samples, no extra calls).
 | `settings.py`, `roster.py` | settings (`UQ_` prefix, optional `uq.env`); models, judges, focus models |
 | `sets/` | `build.py` freezes the question sets into `data/uq_sets/` (pinned sources, manifest); `load.py` reads them |
 | `generate/` | prompts; Ollama and simulated backends; the runner (greedy + K samples + self-evaluation + probes) |
-| `methods/` | Objective 1 methods: semantic entropy, token-level, spectral, consistency, self-evaluation; NLI |
+| `methods/` | Objective 1 methods, one file each (`01_semantic_entropy.py` … `17_verbalised_confidence.py`, indexed in `methods/README.md`); NLI; the method table |
 | `label/` | correctness (rules + cross-family judge), interventions, human annotation |
 | `score.py`, `metrics.py`, `thresholds.py` | scores per question; AUROC & co.; dev-tuned thresholds |
 | `framework/` | Objective 2: taxonomy, features, detector, classifier, `analyze` tool |
@@ -125,4 +125,6 @@ Inside `results/`: one folder per model (`gen/*.jsonl.gz` generations, `nli/*.np
 `labels.jsonl`, `scores.csv`, `thresholds.json`, `interventions.jsonl`), `models/` (the
 trained framework), `reports/obj1`, `reports/obj2`, `reports/SUMMARY.md`, `run_state.json`.
 
-Each source file has a note beside it (`file.py` → `file.README.md`).
+Each source file has a note beside it (`file.py` → `file.README.md`). The 17 numbered method files in
+`methods/` also document themselves (formula, symbols, worked example), and `methods/README.md`
+indexes them.

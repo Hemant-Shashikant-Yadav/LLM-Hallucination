@@ -141,12 +141,16 @@ uncertainty/
 │   ├── interventions.py     Objective 2: re-ask with oracle evidence / a reasoning hint
 │   └── annotate.py          export items for human labelling, import labels, agreement (κ)
 ├── methods/                 Objective 1: published uncertainty algorithms (pure functions)
+│   ├── 01_semantic_entropy.py … 17_verbalised_confidence.py
+│   │                        one method per file, in report order, each documenting its formula,
+│   │                        symbols and a worked example (index: methods/README.md):
+│   │                        01-04 semantic entropy (discrete, weighted, pipeline), number of groups;
+│   │                        05-07 spectral EigV, Degree, Eccentricity; 08 disagreement with greedy;
+│   │                        09 SelfCheck-NLI; 10-14 NLL, normalised NLL, token entropy mean/max,
+│   │                        predictive entropy; 15 lexical similarity; 16 P(True); 17 verbalised confidence
+│   ├── common.py            helpers shared by the method files
 │   ├── nli.py               DeBERTa-v3 NLI pair matrix, batched, cached on disk
-│   ├── semantic_entropy.py  discrete SE, likelihood-weighted SE, number of meaning clusters
-│   ├── token_level.py       NLL, length-normalised NLL, token entropy, predictive entropy
-│   ├── graph.py             spectral methods: EigV, Degree, Eccentricity
-│   ├── consistency.py       lexical similarity, agreement with the greedy answer, SelfCheck-NLI
-│   └── self_eval.py         P(True), verbalised confidence
+│   └── registry.py          the method table (labels, families, references)
 ├── metrics.py               AUROC, AUPRC, AURAC, PRR, ECE, Brier, bootstrap CIs, DeLong test
 ├── framework/               Objective 2
 │   ├── taxonomy.py          uncertainty types, subtypes, recommended actions

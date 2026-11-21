@@ -16,7 +16,7 @@ from uncertainty.framework.features import question_features, structure_features
 from uncertainty.label.correctness import load_labels
 from uncertainty.methods.nli import load_matrices, nli_path
 from uncertainty.methods.registry import METHODS, score_view
-from uncertainty.methods.semantic_entropy import se_discrete, se_normalized, se_pipeline
+from uncertainty.methods import se_discrete, se_normalized, se_pipeline
 from uncertainty.methods.view import View, view_from_record
 from uncertainty.roster import spec
 from uncertainty.sets.load import SETS
