@@ -1,6 +1,7 @@
 # Running the uncertainty study on Google Colab
 
-A quicker version of the full Mac study, for analysis: **all 12 models on all 11 datasets**, with fewer
+A quicker version of the full Mac study, for analysis: **the 6 models of the thesis (Qwen and Llama) on all 11
+datasets**, with fewer
 questions per dataset. It runs the same code (`python -m uncertainty run-all`) with a few flags, so the
 reports, tables and figures are the same kind as the full run's.
 
@@ -22,8 +23,8 @@ of question (and FreshQA's false premises as well as its changing facts) stays i
 
 | `PER_SET` | Questions per model | Free T4 | L4 | A100 |
 |---|---|---|---|---|
-| **20 (default)** | 220 | ~10 h | ~5–6 h | ~3 h |
-| 30 | 330 | ~15 h | ~8 h | ~4–5 h |
+| **20 (default)** | 220 | ~4–5 h | ~2–3 h | ~1.5 h |
+| 30 | 330 | ~6–7 h | ~3–4 h | ~2 h |
 
 The times are rough estimates. The pilot stage measures the real speed after about 15 minutes; the projection
 is in `run.log` and in `reports/SUMMARY.md` (column *Projected h*).
@@ -37,15 +38,15 @@ firmer per-dataset numbers use 30 or more, or the full Mac run.
 
 | | Mac (full study) | Colab (this notebook) |
 |---|---|---|
-| Questions | 3,367 for the 3 focus models, 1,410 for the others | `PER_SET` × 11 for every model (same questions for all) |
-| Models | picked from the Mac's memory (9 or 12) | the 12 listed in the notebook (`--models`) |
+| Questions | 3,367 for the focus models, 1,410 for the others | `PER_SET` × 11 for every model (same questions for all) |
+| Models | picked from the Mac's memory (9 or 12) | the 6 of the thesis, listed in the notebook (`--models`): qwen2.5:3b, qwen2.5:7b, qwen3:4b, llama3.2:3b, llama2:7b, llama3.1:8b; focus models qwen2.5:3b and llama3.1:8b |
 | Judges | by memory class | `--memory-gb 16`: llama3.1:8b, or qwen2.5:7b for the llama models; a third family checks a sample |
 | Second-judge sample | 300 answers per model | 50 per model |
 | Everything else | samples, methods, metrics, Objective 2 re-asks and reports | the same |
 
 Why `--memory-gb 16` and `--models`: on Linux the run reads system RAM to pick models, and Colab has only about
 13 GB of it (the GPU memory is separate). With no model fitting, the run stops and says so; naming the models
-avoids that. The 14B models fit on a 16 GB T4.
+avoids that. All six models fit on a 16 GB T4.
 
 ## After the run
 
